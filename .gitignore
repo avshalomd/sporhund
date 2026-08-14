@@ -1,0 +1,31 @@
+# --- FINN data must never be committed or redistributed ---
+# Local watch DB, any cached pages, scratch data, exports.
+*.db
+*.sqlite
+*.sqlite3
+data/
+cache/
+scratch/
+*.html
+*.json.gz
+fetched/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+uv.lock.local
+
+# --- Tooling / OS ---
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.DS_Store
+.env
+.idea/
+.vscode/
