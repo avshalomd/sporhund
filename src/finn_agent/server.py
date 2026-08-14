@@ -12,19 +12,31 @@ locally. See NOTICE for the intended use.
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Literal
 
 try:  # newer mcp package (>= 2026) renamed the high-level server
     from mcp.server.mcpserver import MCPServer as _Server
 except ModuleNotFoundError:  # older packages ship it as FastMCP
     from mcp.server.fastmcp import FastMCP as _Server
 
+from . import __version__
 from .finn import FinnClient, Listing, SearchResult, SEARCH_URLS, summarize
 from .store import Store
 
-mcp = _Server("finn-agent")
+# Advertised to clients in serverInfo, so a connected agent can tell versions apart.
+mcp = _Server("finn-agent", version=__version__)
+
+Vertical = Literal["torget", "car", "job"]
 _client = FinnClient()
 _store = Store()
+
+
+def _require_vertical(vertical: str) -> None:
+    """Guard for clients that ignore the schema enum and send anything."""
+    if vertical not in SEARCH_URLS:
+        raise ValueError(
+            f"Unknown vertical {vertical!r}. Choose one of: {', '.join(SEARCH_URLS)}."
+        )
 
 
 def _filters_from(raw: str | None) -> dict[str, Any]:
@@ -41,7 +53,7 @@ def _filters_from(raw: str | None) -> dict[str, Any]:
 
 @mcp.tool()
 async def search_finn(
-    vertical: str,
+    vertical: Vertical,
     query: str = "",
     page: int = 1,
     sort: str = "",
@@ -57,15 +69,17 @@ async def search_finn(
         sort: Optional FINN sort key, e.g. "PUBLISHED_DESC" (newest first).
         filters: Optional JSON object string of extra FINN query parameters.
             Common ones: price_from, price_to (kr); for cars also year_from,
-            year_to, mileage_from, mileage_to; plus any raw FINN filter such as
-            {"dealer_segment": "1"} for private sellers only.
+            year_to, mileage_from, mileage_to. Useful raw FINN filters:
+            {"dealer_segment": "1"} private sellers only ("3" = dealers);
+            {"trade_type": "1"} genuine for-sale ads only ("2" = giveaways,
+            "3" = wanted-to-buy) — worth setting on Torget, where giveaway and
+            wanted ads otherwise appear alongside real listings.
 
+    Each listing reports `trade_type` and `seller_type` so giveaways and
+    wanted-to-buy ads can be told apart from real for-sale listings.
     Returns the total match count, paging info, and the listings on this page.
     """
-    if vertical not in SEARCH_URLS:
-        raise ValueError(
-            f"Unknown vertical {vertical!r}. Choose one of: {', '.join(SEARCH_URLS)}."
-        )
+    _require_vertical(vertical)
     result = await _client.search(
         vertical,
         query=query or None,
@@ -95,7 +109,7 @@ async def get_listing(finnkode_or_url: str) -> dict[str, Any]:
 @mcp.tool()
 async def create_watch(
     name: str,
-    vertical: str,
+    vertical: Vertical,
     query: str = "",
     sort: str = "",
     filters: str = "",
@@ -112,10 +126,7 @@ async def create_watch(
         sort: Optional FINN sort key.
         filters: Optional JSON object string of FINN query parameters.
     """
-    if vertical not in SEARCH_URLS:
-        raise ValueError(
-            f"Unknown vertical {vertical!r}. Choose one of: {', '.join(SEARCH_URLS)}."
-        )
+    _require_vertical(vertical)
     if _store.get_watch(name) is not None:
         raise ValueError(
             f"A watch named {name!r} already exists. Pick another name or delete it."
@@ -177,13 +188,19 @@ async def check_watch(name: str, pages: int = 1) -> dict[str, Any]:
         "first_check": is_first_check,
         "new_count": len(fresh),
         "new_listings": [l.to_dict() for l in fresh],
-        "note": (
-            "First check: recorded current matches as the baseline. "
-            "Run check_watch again later to see only new listings."
-            if is_first_check
-            else "These listings are new since your last check."
-        ),
+        "note": _watch_note(is_first_check, len(fresh)),
     }
+
+
+def _watch_note(is_first_check: bool, new_count: int) -> str:
+    if is_first_check:
+        return (
+            "First check: recorded the current matches as the baseline. "
+            "Run check_watch again later to see only new listings."
+        )
+    if new_count == 0:
+        return "Nothing new since your last check."
+    return "These listings are new since your last check."
 
 
 @mcp.tool()

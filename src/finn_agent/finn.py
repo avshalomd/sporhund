@@ -21,6 +21,7 @@ import json
 import re
 import time
 from dataclasses import dataclass, field
+import html as htmllib
 from typing import Any, Iterable
 from urllib.parse import unquote, urlencode, urlparse
 
@@ -70,6 +71,15 @@ _OG_TITLE_RE = re.compile(r'<meta property="og:title" content="([^"]*)"')
 # Car/mobility item pages carry the ad in a base64+urlencoded `data-props`
 # attribute on the page-root div, rather than in JSON-LD.
 _DATA_PROPS_RE = re.compile(r'data-props="([A-Za-z0-9+/=]+)"')
+# The seller's full free text lives in the rendered page. JSON-LD only carries
+# an SEO-truncated (~160 char) version, which is useless for judging an item.
+_DESC_SECTION_RE = re.compile(
+    r'<section[^>]*data-testid="description"[^>]*>(.*?)</section>', re.S
+)
+_STRIP_BLOCKS_RE = re.compile(r"<(script|style|button)\b.*?</\1>", re.S)
+_BR_RE = re.compile(r"<br\s*/?>", re.I)
+_BLOCK_END_RE = re.compile(r"</(?:p|div|li|h\d)\s*>", re.I)
+_TAG_RE = re.compile(r"<[^>]+>")
 
 
 class FinnError(RuntimeError):
@@ -88,6 +98,9 @@ class Listing:
     location: str | None = None
     published: int | None = None  # epoch ms, when available
     seller_type: str | None = None  # "private" / "dealer" when known
+    # "Til salgs" / "Gis bort" / "Ønskes kjøpt" — lets a caller tell real
+    # for-sale ads apart from giveaways and wanted-to-buy ads.
+    trade_type: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)  # vertical-specific fields
 
     def to_dict(self) -> dict[str, Any]:
@@ -100,6 +113,7 @@ class Listing:
             "location": self.location,
             "published": self.published,
             "seller_type": self.seller_type,
+            "trade_type": self.trade_type,
         }
         d.update(self.extra)
         return {k: v for k, v in d.items() if v is not None}
@@ -248,6 +262,28 @@ def _parse_search(html: str, vertical: str) -> SearchResult:
     )
 
 
+def _coerce_price(value: Any) -> int | None:
+    """Normalize the several shapes FINN reports prices in to a plain int.
+
+    Search results give {"amount": 13500}, JSON-LD gives the string "13500",
+    and car pages give {"total": 119000}. Callers comparing across verticals
+    should never have to care which.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, dict):
+        for key in ("total", "amount", "main", "value"):
+            if value.get(key) is not None:
+                return _coerce_price(value[key])
+        return None
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str):
+        digits = re.sub(r"[^\d]", "", value)
+        return int(digits) if digits else None
+    return None
+
+
 def _seller_type(doc: dict[str, Any]) -> str | None:
     flags = doc.get("flags") or []
     if "private" in flags:
@@ -262,14 +298,11 @@ def _normalize(doc: dict[str, Any], vertical: str) -> Listing | None:
     finnkode = str(doc.get("id") or "")
     if not finnkode:
         return None
-    price = None
-    currency = None
     price_obj = doc.get("price")
-    if isinstance(price_obj, dict):
-        price = price_obj.get("amount")
-        currency = price_obj.get("currency_code")
-    elif isinstance(price_obj, (int, float)):
-        price = int(price_obj)
+    price = _coerce_price(price_obj)
+    currency = (
+        price_obj.get("currency_code") if isinstance(price_obj, dict) else None
+    )
 
     extra: dict[str, Any] = {}
     if vertical == "car":
@@ -294,6 +327,7 @@ def _normalize(doc: dict[str, Any], vertical: str) -> Listing | None:
         location=doc.get("location"),
         published=doc.get("timestamp"),
         seller_type=_seller_type(doc),
+        trade_type=doc.get("trade_type"),
         extra=extra,
     )
 
@@ -313,18 +347,43 @@ def _canonical_item_url(finnkode_or_url: str) -> str:
     return f"https://www.finn.no/recommerce/forsale/item/{m.group(1)}"
 
 
+def _extract_full_description(html: str) -> str | None:
+    """Pull the seller's complete free text out of the rendered page."""
+    m = _DESC_SECTION_RE.search(html)
+    if not m:
+        return None
+    frag = _STRIP_BLOCKS_RE.sub("", m.group(1))
+    frag = _BR_RE.sub("\n", frag)
+    frag = _BLOCK_END_RE.sub("\n", frag)
+    text = htmllib.unescape(_TAG_RE.sub("", frag))
+
+    lines: list[str] = []
+    for raw_line in text.split("\n"):
+        line = raw_line.strip()
+        if line:
+            lines.append(line)
+        elif lines and lines[-1]:  # collapse runs of blank lines
+            lines.append("")
+    return "\n".join(lines).strip() or None
+
+
 def _parse_listing(html: str, url: str) -> dict[str, Any]:
     out: dict[str, Any] = {"url": url}
     # Torget / recommerce items expose a JSON-LD Product block.
     _merge_product_ld(html, out)
-    # Car / mobility items carry the ad in a base64 data-props attribute.
-    if "name" not in out:
-        _merge_data_props(html, out)
+    # Car / mobility items carry the ad in a base64 data-props attribute. Some
+    # pages have both, and the data-props payload is by far the richer of the
+    # two, so always merge it in rather than treating the sources as exclusive.
+    _merge_data_props(html, out)
+    # Prefer the full on-page description over JSON-LD's ~160-char SEO stub.
+    full = _extract_full_description(html)
+    if full and len(full) > len(out.get("description") or ""):
+        out["description"] = full
     # Fallbacks that work on any page.
     if not out.get("description"):
         m = _OG_DESC_RE.search(html)
         if m:
-            out["description"] = m.group(1)
+            out["description"] = htmllib.unescape(m.group(1))
     if not out.get("name"):
         m = _OG_TITLE_RE.search(html)
         if m:
@@ -349,7 +408,7 @@ def _merge_product_ld(html: str, out: dict[str, Any]) -> None:
             out["condition"] = data.get("itemCondition")
             offers = data.get("offers")
             if isinstance(offers, dict):
-                out["price"] = offers.get("price")
+                out["price"] = _coerce_price(offers.get("price"))
                 out["currency"] = offers.get("priceCurrency")
                 out["availability"] = offers.get("availability")
             props = data.get("additionalProperty")
@@ -371,22 +430,35 @@ def _merge_data_props(html: str, out: dict[str, Any]) -> None:
         props = json.loads(decoded)
     except Exception:
         return
-    ad = _find_key(props, "ad")
+    ad = props.get("adData", {}).get("ad") if isinstance(props, dict) else None
+    if not isinstance(ad, dict):  # layout differs by vertical; fall back to a scan
+        ad = _find_key(props, "ad")
     if not isinstance(ad, dict):
         return
-    out["name"] = ad.get("title") or ad.get("heading")
-    price = ad.get("price")
-    if isinstance(price, dict):
-        out["price"] = price.get("total") or price.get("main")
-        out["currency"] = "NOK"
-    elif isinstance(price, (int, float)):
-        out["price"] = int(price)
+    # Only fill what JSON-LD did not already provide.
+    if not out.get("name"):
+        out["name"] = ad.get("title") or ad.get("heading")
+    price = _coerce_price(ad.get("price"))
+    if price is not None and out.get("price") is None:
+        out["price"] = price
+        out.setdefault("currency", "NOK")
+
     details: dict[str, Any] = {}
     for key in ("year", "mileage", "mileage_unit", "no_of_seats", "no_of_doors",
-                "body_type", "transmission", "wheel_drive", "owners",
-                "model_and_make", "exterior_color", "sales_form"):
+                "owners", "model_and_make", "exterior_color",
+                "first_registration", "registration_number", "service_history",
+                "right_to_exchange"):
         if ad.get(key) is not None and not isinstance(ad[key], (dict, list)):
             details[key] = ad[key]
+    # Several fields are {"id": n, "value": "..."} wrappers; keep the label.
+    for key in ("body_type", "transmission", "wheel_drive", "sales_form",
+                "registration_class", "car_location"):
+        value = ad.get(key)
+        if isinstance(value, dict) and value.get("value") is not None:
+            details[key] = value["value"]
+        elif isinstance(value, str):
+            details[key] = value
+
     engine = ad.get("engine")
     if isinstance(engine, dict):
         fuel = engine.get("fuel")
@@ -394,13 +466,29 @@ def _merge_data_props(html: str, out: dict[str, Any]) -> None:
             details["fuel"] = fuel.get("value")
         if engine.get("effect") is not None:
             details["power_hp"] = engine.get("effect")
-    trans = ad.get("transmission")
-    if isinstance(trans, dict):
-        details["transmission"] = trans.get("value")
-    if ad.get("eu_check"):
-        details["eu_check"] = ad["eu_check"]
+
+    # Condition signals a buyer actually cares about.
+    eu_check = ad.get("eu_check")
+    if isinstance(eu_check, dict) and eu_check.get("next"):
+        details["eu_check_next"] = eu_check["next"]
+    damages = ad.get("damages")
+    if isinstance(damages, dict) and damages.get("has_known_damages") is not None:
+        details["has_known_damages"] = damages["has_known_damages"]
+    repairs = ad.get("repairs")
+    if isinstance(repairs, dict) and repairs.get("has_undergone_repairs") is not None:
+        details["has_undergone_repairs"] = repairs["has_undergone_repairs"]
+
     if details:
-        out["properties"] = details
+        # JSON-LD's additionalProperty is thin; the ad payload wins on conflict.
+        merged = {**(out.get("properties") or {}), **details}
+        out["properties"] = merged
+
+    equipment = ad.get("equipment")
+    if isinstance(equipment, list):
+        labels = [e.get("value") for e in equipment if isinstance(e, dict) and e.get("value")]
+        if labels:
+            out["equipment"] = labels
+
     if not out.get("description") and ad.get("description"):
         out["description"] = ad["description"]
 

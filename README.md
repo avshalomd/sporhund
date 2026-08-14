@@ -21,8 +21,8 @@ The server exposes these tools to your agent:
 
 | Tool | What it does |
 |------|--------------|
-| `search_finn` | Search **torget** (secondhand goods), **car** (used cars), or **job** (jobs) with free text, price/year/mileage filters, sorting, and paging. Returns structured listings plus quick price statistics (min / median / mean / max). |
-| `get_listing` | Fetch one listing's full title, description, price, condition, and attributes by finnkode or URL. |
+| `search_finn` | Search **torget** (secondhand goods), **car** (used cars), or **job** (jobs) with free text, price/year/mileage filters, sorting, and paging. Returns structured listings plus quick price statistics (min / median / mean / max). Each listing reports `trade_type` and `seller_type`, so giveaways ("Gis bort") and wanted-to-buy ads ("Ønskes kjøpt") are distinguishable from real sales. |
+| `get_listing` | Fetch one listing's **full** seller description (not the ~160-char SEO stub), price, condition, and attributes by finnkode or URL. For cars this includes year, mileage, owners, fuel, power, transmission, first registration, next EU-check date, known-damage/repair flags, and the full equipment list. |
 | `create_watch` | Save a search under a name (stored locally). |
 | `check_watch` | Re-run a saved search and return **only listings you haven't seen before** — a smarter, agent-driven version of *lagrede søk*. |
 | `list_watches` / `delete_watch` | Manage your saved watches. |
@@ -65,16 +65,21 @@ uv run finn-agent
 
 That starts the MCP server on stdio. Point your MCP client at it.
 
-### Claude Desktop / Claude Code
+### Claude Code
 
-Add to your MCP config (adjust the path):
+A project-scoped [`.mcp.json`](.mcp.json) is committed, so opening this
+directory in Claude Code offers the server automatically — approve `finn` once
+when prompted and the six tools appear. (It uses an absolute path; adjust it if
+you move the repo.)
+
+### Claude Desktop / other MCP clients
 
 ```json
 {
   "mcpServers": {
     "finn": {
       "command": "uv",
-      "args": ["--directory", "/Users/avshalom/projects/finn-agent", "run", "finn-agent"]
+      "args": ["run", "--directory", "/Users/avshalom/projects/finn-agent", "finn-agent"]
     }
   }
 }
@@ -87,7 +92,12 @@ Then ask Claude to search or watch FINN in plain language.
 - Search pages: FINN server-renders results and embeds them as a base64 JSON
   blob (`<script data-react-query-state>`). The server decodes that and
   normalizes each listing — the same data your browser already received.
-- Listing pages: parsed from the page's JSON-LD `Product` block.
+- Listing pages come in two shapes, and both are merged when present: a JSON-LD
+  `Product` block (Torget) and a base64 `data-props` attribute (cars, which is
+  much richer). The seller's full description is read from the rendered
+  `description` section, because JSON-LD only carries an SEO-truncated version.
+- Prices are normalized to plain integers regardless of which shape they came
+  from, so values are comparable across verticals.
 - Pacing: a process-wide minimum interval between requests (default 2 s); one
   request per tool call; no background loops.
 - Storage: a local SQLite file under your user data dir

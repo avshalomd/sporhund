@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "finn": {
+      "command": "uv",
+      "args": ["run", "--directory", "/Users/avshalom/projects/finn-agent", "finn-agent"]
+    }
+  }
+}
