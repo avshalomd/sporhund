@@ -15,7 +15,13 @@ from pathlib import Path
 
 import pytest
 
-from finn_agent.finn import _coerce_price, _parse_listing, _parse_search
+from finn_agent.finn import (
+    _canonical_item_url,
+    _coerce_price,
+    _parse_listing,
+    _parse_search,
+    resize_image_url,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -115,6 +121,75 @@ def test_car_page_carrying_both_formats_still_gets_rich_data() -> None:
     assert props.get("year") and props.get("mileage")
     assert data.get("equipment"), "equipment lost when JSON-LD is also present"
     assert isinstance(data.get("price"), int)
+
+
+def test_search_results_carry_a_thumbnail() -> None:
+    html = _read("torget_search.html")
+    if html is None:
+        pytest.skip("fixture torget_search.html not present")
+    result = _parse_search(html, "torget")
+    with_images = [l for l in result.listings if l.image_url]
+    assert with_images, "expected most listings to have a thumbnail"
+    assert all(
+        l.image_url.startswith("https://images.finncdn.no/") for l in with_images
+    )
+
+
+@pytest.mark.parametrize(
+    "fixture,url",
+    [
+        ("item.html", "https://www.finn.no/recommerce/forsale/item/235798748"),
+        ("car_item_with_ld.html", "https://www.finn.no/mobility/item/473250077"),
+    ],
+)
+def test_listing_exposes_image_urls(fixture: str, url: str) -> None:
+    """URLs only — get_listing must never download image bytes."""
+    html = _read(fixture)
+    if html is None:
+        pytest.skip(f"fixture {fixture} not present")
+    images = _parse_listing(html, url).get("images") or []
+    assert images, "expected at least one image URL"
+    assert all(u.startswith("https://images.finncdn.no/") for u in images)
+
+
+@pytest.mark.parametrize(
+    "url,width,expected",
+    [
+        (
+            "https://images.finncdn.no/dynamic/default/2024/8/x/1_a.jpg",
+            640,
+            "https://images.finncdn.no/dynamic/640w/2024/8/x/1_a.jpg",
+        ),
+        (
+            "https://images.finncdn.no/dynamic/1280w/2024/8/x/1_a.jpg",
+            480,
+            "https://images.finncdn.no/dynamic/480w/2024/8/x/1_a.jpg",
+        ),
+        (  # car images have no file extension
+            "https://images.finncdn.no/dynamic/default/item/473250077/721a2ad2",
+            640,
+            "https://images.finncdn.no/dynamic/640w/item/473250077/721a2ad2",
+        ),
+    ],
+)
+def test_resize_image_url(url: str, width: int, expected: str) -> None:
+    assert resize_image_url(url, width) == expected
+
+
+def test_bare_finnkode_resolves_via_site_root() -> None:
+    """A vertical-specific guess 404s for anything that isn't a Torget item."""
+    assert _canonical_item_url("473250077") == "https://www.finn.no/473250077"
+    assert (
+        _canonical_item_url("https://www.finn.no/mobility/item/473250077")
+        == "https://www.finn.no/mobility/item/473250077"
+    )
+
+
+def test_refuses_non_finn_urls() -> None:
+    from finn_agent.finn import FinnError
+
+    with pytest.raises(FinnError):
+        _canonical_item_url("https://evil.example.com/item/123456")
 
 
 @pytest.mark.parametrize(

@@ -15,12 +15,20 @@ import json
 from typing import Any, Literal
 
 try:  # newer mcp package (>= 2026) renamed the high-level server
-    from mcp.server.mcpserver import MCPServer as _Server
+    from mcp.server.mcpserver import Image, MCPServer as _Server
 except ModuleNotFoundError:  # older packages ship it as FastMCP
-    from mcp.server.fastmcp import FastMCP as _Server
+    from mcp.server.fastmcp import FastMCP as _Server, Image
 
 from . import __version__
-from .finn import FinnClient, Listing, SearchResult, SEARCH_URLS, summarize
+from .finn import (
+    DEFAULT_IMAGE_WIDTH,
+    MAX_IMAGES_PER_CALL,
+    FinnClient,
+    Listing,
+    SearchResult,
+    SEARCH_URLS,
+    summarize,
+)
 from .store import Store
 
 # Advertised to clients in serverInfo, so a connected agent can tell versions apart.
@@ -100,10 +108,56 @@ async def get_listing(finnkode_or_url: str) -> dict[str, Any]:
         finnkode_or_url: A FINN listing code (e.g. "235798748") or a full
             finn.no listing URL.
 
-    Returns the title, full description, price, condition, and any structured
-    attributes FINN publishes for the item.
+    Returns the title, the seller's full description, price, condition, any
+    structured attributes FINN publishes, and `images` — the photo URLs, as
+    links only, nothing downloaded. To actually look at the photos, use
+    `view_listing_images`.
     """
     return await _client.get_listing(finnkode_or_url)
+
+
+# Image content can't be described by an output schema, so this tool returns
+# unstructured content blocks.
+@mcp.tool(structured_output=False)
+async def view_listing_images(
+    finnkode_or_url: str,
+    max_images: int = 3,
+    width: int = DEFAULT_IMAGE_WIDTH,
+) -> list[Image]:
+    """Look at a listing's photos — use when the pictures answer the question.
+
+    Worth calling for things text can't settle: actual condition and wear,
+    whether the described damage looks serious, what is included in the box,
+    tyre tread, rust, or whether a room matches the description. Skip it when
+    the text already answers the question — images cost far more context than
+    text, and each one is a separate request.
+
+    Photos are fetched into memory only and are never saved. `get_listing`
+    returns the image URLs without downloading anything, which is enough if
+    you only need to hand the user a link.
+
+    Args:
+        finnkode_or_url: A FINN listing code or full finn.no listing URL.
+        max_images: How many photos to fetch, newest-first (1-6, default 3).
+        width: Pixel width to request from FINN's image CDN (default 640).
+            Larger costs more context; 640 is plenty to judge condition.
+    """
+    max_images = max(1, min(int(max_images), MAX_IMAGES_PER_CALL))
+    width = max(120, min(int(width), 1280))
+
+    listing = await _client.get_listing(finnkode_or_url)
+    urls = listing.get("images") or []
+    if not urls:
+        raise ValueError(
+            f"No photos found for {finnkode_or_url!r}. The ad may have none, "
+            "or it may no longer exist."
+        )
+
+    images: list[Image] = []
+    for url in urls[:max_images]:
+        data, mime = await _client.fetch_image(url, width=width)
+        images.append(Image(data=data, format=mime.removeprefix("image/")))
+    return images
 
 
 @mcp.tool()

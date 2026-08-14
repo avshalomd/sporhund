@@ -16,6 +16,8 @@ It **does**:
 - keep everything local — search results are returned to you and not stored,
   and watches store only listing ids you have already seen, never a mirror of
   FINN's content;
+- fetch listing photos only when explicitly asked, capped in number, into
+  memory only, never to disk (see "On listing photos" below);
 - present a normal browser identity, because it is loading the same pages a
   person would.
 
@@ -24,6 +26,25 @@ It **does not**, and must not be changed to do:
 - run background crawlers, bulk downloads, or mirror FINN's catalogue;
 - store, aggregate, publish, or redistribute FINN's listing data;
 - power a public service, product, or anything commercial.
+
+## On listing photos
+
+Two different things, with different risk profiles:
+
+- **Image URLs** (in search results and `get_listing`) are just links. Nothing
+  is copied, so this carries no more risk than the text already does.
+- **Fetching image bytes** (`view_listing_images`) is a reproduction — but it is
+  the same act your browser performs when you open the ad, done on demand, for
+  your own eyes, held in memory and never saved. FINN's own terms bar copying
+  "med unntak av privat bruk" — *except for private use* — and Norwegian
+  copyright law has a private-copying exception, so the copying itself sits
+  inside the carve-out. The grey part is the automation, which is the same grey
+  already accepted for text.
+
+Note that listing photos are usually the **seller's** copyright, not FINN's, and
+may contain personal data (faces, plates, home interiors). That is another
+reason this tool never stores, republishes, or trains on them. Storing or
+sharing fetched images would leave the private-use carve-out immediately.
 
 ## Why the line is drawn here
 

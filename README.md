@@ -23,6 +23,7 @@ The server exposes these tools to your agent:
 |------|--------------|
 | `search_finn` | Search **torget** (secondhand goods), **car** (used cars), or **job** (jobs) with free text, price/year/mileage filters, sorting, and paging. Returns structured listings plus quick price statistics (min / median / mean / max). Each listing reports `trade_type` and `seller_type`, so giveaways ("Gis bort") and wanted-to-buy ads ("Ønskes kjøpt") are distinguishable from real sales. |
 | `get_listing` | Fetch one listing's **full** seller description (not the ~160-char SEO stub), price, condition, and attributes by finnkode or URL. For cars this includes year, mileage, owners, fuel, power, transmission, first registration, next EU-check date, known-damage/repair flags, and the full equipment list. |
+| `view_listing_images` | Actually **look** at a listing's photos — condition, wear, rust, what's in the box. Fetches up to 6 images (default 3) at a chosen width into memory only; nothing is saved. Skip it when the text already answers the question: images cost far more context than text. |
 | `create_watch` | Save a search under a name (stored locally). |
 | `check_watch` | Re-run a saved search and return **only listings you haven't seen before** — a smarter, agent-driven version of *lagrede søk*. |
 | `list_watches` / `delete_watch` | Manage your saved watches. |
@@ -98,6 +99,13 @@ Then ask Claude to search or watch FINN in plain language.
   `description` section, because JSON-LD only carries an SEO-truncated version.
 - Prices are normalized to plain integers regardless of which shape they came
   from, so values are comparable across verticals.
+- Images: search results carry the primary thumbnail URL and `get_listing`
+  returns every photo URL — **links only, nothing downloaded**. Only
+  `view_listing_images` fetches actual bytes, on request, capped, resized via
+  FINN's own CDN (`/dynamic/<width>w/`), held in memory and never written to
+  disk. Non-finncdn URLs are refused outright.
+- A bare finnkode is resolved through `finn.no/<code>`, which redirects to
+  whichever vertical owns the ad, so codes work for cars and jobs too.
 - Pacing: a process-wide minimum interval between requests (default 2 s); one
   request per tool call; no background loops.
 - Storage: a local SQLite file under your user data dir

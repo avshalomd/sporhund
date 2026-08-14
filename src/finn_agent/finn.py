@@ -40,6 +40,15 @@ _HEADERS = {
 
 # Polite pacing: never fire search requests faster than this, process-wide.
 _MIN_REQUEST_INTERVAL_S = 2.0
+# Images come from a CDN, and a browser opening one listing pulls all of them at
+# once, so a lighter interval is appropriate there than for app pages.
+_MIN_IMAGE_INTERVAL_S = 0.5
+
+# finncdn serves arbitrary widths via the path segment after /dynamic/.
+# 640px is plenty to judge an item's condition without wasting context.
+DEFAULT_IMAGE_WIDTH = 640
+MAX_IMAGES_PER_CALL = 6
+_CDN_SIZE_RE = re.compile(r"(https://images\.finncdn\.no/dynamic/)([^/]+)(/)")
 
 # Vertical -> search URL. Only verticals whose pages embed the clean
 # React-Query state are wired up here; real estate has moved to a different
@@ -101,6 +110,9 @@ class Listing:
     # "Til salgs" / "Gis bort" / "Ønskes kjøpt" — lets a caller tell real
     # for-sale ads apart from giveaways and wanted-to-buy ads.
     trade_type: str | None = None
+    # Just the primary thumbnail here — a full gallery per row would swamp a
+    # 50-result page. get_listing returns every image for a single ad.
+    image_url: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)  # vertical-specific fields
 
     def to_dict(self) -> dict[str, Any]:
@@ -114,6 +126,7 @@ class Listing:
             "published": self.published,
             "seller_type": self.seller_type,
             "trade_type": self.trade_type,
+            "image_url": self.image_url,
         }
         d.update(self.extra)
         return {k: v for k, v in d.items() if v is not None}
@@ -148,7 +161,10 @@ class FinnClient:
         self._last_request = 0.0
         self._lock = asyncio.Lock()
 
-    async def _get(self, url: str, params: dict[str, str] | None = None) -> str:
+    async def _get(
+        self, url: str, params: dict[str, str] | None = None
+    ) -> tuple[str, str]:
+        """Fetch a page. Returns (html, final_url_after_redirects)."""
         async with self._lock:
             wait = self._min_interval - (time.monotonic() - self._last_request)
             if wait > 0:
@@ -162,7 +178,7 @@ class FinnClient:
                 self._last_request = time.monotonic()
         if resp.status_code != 200:
             raise FinnError(f"FINN returned HTTP {resp.status_code} for {resp.url}")
-        return resp.text
+        return resp.text, str(resp.url)
 
     # -- search ----------------------------------------------------------------
 
@@ -193,7 +209,7 @@ class FinnClient:
             params[mapped] = str(value)
 
         base = SEARCH_URLS[vertical]
-        html = await self._get(base, params=params)
+        html, _ = await self._get(base, params=params)
         result = _parse_search(html, vertical)
         result.query_url = f"{base}?{urlencode(params)}" if params else base
         return result
@@ -202,8 +218,37 @@ class FinnClient:
 
     async def get_listing(self, finnkode_or_url: str) -> dict[str, Any]:
         url = _canonical_item_url(finnkode_or_url)
-        html = await self._get(url)
-        return _parse_listing(html, url)
+        html, final_url = await self._get(url)
+        return _parse_listing(html, final_url)
+
+    # -- images ----------------------------------------------------------------
+
+    async def fetch_image(
+        self, url: str, width: int = DEFAULT_IMAGE_WIDTH
+    ) -> tuple[bytes, str]:
+        """Fetch one listing photo into memory. Never written to disk.
+
+        Returns (bytes, mime_type). Only finncdn URLs are accepted, so a
+        malformed listing can't be used to make this fetch somewhere else.
+        """
+        if not url.startswith("https://images.finncdn.no/"):
+            raise FinnError(f"Refusing to fetch a non-finncdn image URL: {url}")
+        sized = resize_image_url(url, width)
+        async with self._lock:
+            wait = _MIN_IMAGE_INTERVAL_S - (time.monotonic() - self._last_request)
+            if wait > 0:
+                await asyncio.sleep(wait)
+            try:
+                async with httpx.AsyncClient(
+                    headers=_HEADERS, timeout=20.0, follow_redirects=True
+                ) as client:
+                    resp = await client.get(sized)
+            finally:
+                self._last_request = time.monotonic()
+        if resp.status_code != 200:
+            raise FinnError(f"Image fetch returned HTTP {resp.status_code} for {sized}")
+        mime = resp.headers.get("content-type", "image/jpeg").split(";")[0]
+        return resp.content, mime
 
 
 # -- parsing helpers -----------------------------------------------------------
@@ -328,8 +373,24 @@ def _normalize(doc: dict[str, Any], vertical: str) -> Listing | None:
         published=doc.get("timestamp"),
         seller_type=_seller_type(doc),
         trade_type=doc.get("trade_type"),
+        image_url=_primary_image(doc),
         extra=extra,
     )
+
+
+def _primary_image(doc: dict[str, Any]) -> str | None:
+    image = doc.get("image")
+    if isinstance(image, dict) and image.get("url"):
+        return image["url"]
+    urls = doc.get("image_urls")
+    if isinstance(urls, list) and urls:
+        return urls[0]
+    return None
+
+
+def resize_image_url(url: str, width: int = DEFAULT_IMAGE_WIDTH) -> str:
+    """Ask the CDN for a given width instead of the full-size original."""
+    return _CDN_SIZE_RE.sub(rf"\g<1>{int(width)}w\g<3>", url, count=1)
 
 
 def _canonical_item_url(finnkode_or_url: str) -> str:
@@ -342,9 +403,10 @@ def _canonical_item_url(finnkode_or_url: str) -> str:
     m = _FINNKODE_RE.search(s)
     if not m:
         raise FinnError(f"Could not read a finnkode from {finnkode_or_url!r}")
-    # Recommerce is the modern canonical path and redirects to the right
-    # vertical for any finnkode, so it is a safe default entry point.
-    return f"https://www.finn.no/recommerce/forsale/item/{m.group(1)}"
+    # A bare finnkode at the site root redirects to whichever vertical owns the
+    # ad. Guessing a vertical-specific path instead 404s for anything that is
+    # not a Torget item.
+    return f"https://www.finn.no/{m.group(1)}"
 
 
 def _extract_full_description(html: str) -> str | None:
@@ -403,6 +465,11 @@ def _merge_product_ld(html: str, out: dict[str, Any]) -> None:
         except Exception:
             continue
         if isinstance(data, dict) and data.get("@type") == "Product":
+            image = data.get("image")
+            if isinstance(image, list):
+                out["images"] = [u for u in image if isinstance(u, str)]
+            elif isinstance(image, str):
+                out["images"] = [image]
             out["name"] = data.get("name")
             out["description"] = data.get("description")
             out["condition"] = data.get("itemCondition")
@@ -482,6 +549,16 @@ def _merge_data_props(html: str, out: dict[str, Any]) -> None:
         # JSON-LD's additionalProperty is thin; the ad payload wins on conflict.
         merged = {**(out.get("properties") or {}), **details}
         out["properties"] = merged
+
+    images = ad.get("images")
+    if isinstance(images, list):
+        urls = [
+            img.get("uri") or img.get("url")
+            for img in images
+            if isinstance(img, dict) and (img.get("uri") or img.get("url"))
+        ]
+        if len(urls) > len(out.get("images") or []):
+            out["images"] = urls
 
     equipment = ad.get("equipment")
     if isinstance(equipment, list):
