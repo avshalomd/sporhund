@@ -2,7 +2,7 @@
   "mcpServers": {
     "sporhund": {
       "command": "uv",
-      "args": ["run", "--directory", "/Users/avshalom/projects/sporhund", "sporhund"]
+      "args": ["run", "sporhund"]
     }
   }
 }

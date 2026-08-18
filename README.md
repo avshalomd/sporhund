@@ -114,22 +114,26 @@ codex mcp add sporhund -- uvx sporhund
 ### Claude Code
 
 A project-scoped [`.mcp.json`](.mcp.json) is committed, so opening this
-directory in Claude Code offers the server automatically — approve `sporhund` once
-when prompted and the six tools appear. (It uses an absolute path; adjust it if
-you move the repo.)
+directory in Claude Code offers the server automatically — approve `sporhund`
+once when prompted and the tools appear.
 
 ### Claude Desktop / other MCP clients
+
+Once on PyPI (no checkout needed):
 
 ```json
 {
   "mcpServers": {
     "sporhund": {
-      "command": "uv",
-      "args": ["run", "--directory", "/Users/avshalom/projects/sporhund", "sporhund"]
+      "command": "uvx",
+      "args": ["sporhund"]
     }
   }
 }
 ```
+
+From a local checkout, use `"args": ["run", "--directory", "/path/to/sporhund", "sporhund"]`
+with `"command": "uv"` instead.
 
 Then ask Claude to search or watch FINN in plain language.
 
