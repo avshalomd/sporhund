@@ -30,6 +30,12 @@ from .finn import (
     summarize,
 )
 from .store import Store
+from .vegvesen import (
+    VegvesenClient,
+    compare_claims,
+    looks_like_plate,
+    summarize_vehicle,
+)
 
 # Advertised to clients in serverInfo, so a connected agent can tell versions apart.
 mcp = _Server("sporhund", version=__version__)
@@ -37,6 +43,7 @@ mcp = _Server("sporhund", version=__version__)
 Vertical = Literal["torget", "car", "job"]
 _client = FinnClient()
 _store = Store()
+_vegvesen = VegvesenClient()
 
 
 def _require_vertical(vertical: str) -> None:
@@ -264,6 +271,90 @@ async def delete_watch(name: str) -> dict[str, Any]:
     if not ok:
         raise ValueError(f"No watch named {name!r}.")
     return {"status": "deleted", "name": name}
+
+
+@mcp.tool()
+async def lookup_vehicle(plate_or_vin: str) -> dict[str, Any]:
+    """Look up a vehicle in Norway's official vehicle registry.
+
+    Returns what the state holds on the car — registration status, EU-control
+    dates, first registration in Norway, official technical data — as opposed
+    to what a seller typed into an ad. No owner information is available.
+
+    Requires a personal Statens vegvesen API key; without one this raises a
+    message explaining how to get your own. Prefer `verify_car` when you have a
+    FINN listing, since it does the comparison for you.
+
+    Args:
+        plate_or_vin: A Norwegian registration number (e.g. "EV12138") or a
+            chassis/VIN number.
+    """
+    value = plate_or_vin.strip()
+    if looks_like_plate(value):
+        raw = await _vegvesen.lookup(plate=value)
+    else:
+        raw = await _vegvesen.lookup(vin=value)
+    return summarize_vehicle(raw)
+
+
+@mcp.tool()
+async def verify_car(finnkode_or_url: str) -> dict[str, Any]:
+    """Check a FINN car ad against the official vehicle registry.
+
+    This is the single most useful thing to run before contacting a seller: it
+    compares the advertised claims with what Statens vegvesen actually records,
+    and reports anything that disagrees or deserves a question. It surfaces
+    things FINN never shows — a car that is currently deregistered, an EU-control
+    date that differs from the ad, an import, or a former taxi.
+
+    Note it cannot check mileage: the registry does not publish odometer
+    readings, so a claimed kilometre count can only be judged against
+    comparable listings, not verified.
+
+    Requires a personal Statens vegvesen API key.
+
+    Args:
+        finnkode_or_url: A FINN listing code or full finn.no car listing URL.
+    """
+    listing = await _client.get_listing(finnkode_or_url)
+    props = listing.get("properties") or {}
+    plate = props.get("registration_number")
+    vin = props.get("chassis_number")
+    if not plate and not vin:
+        raise ValueError(
+            "This listing publishes no registration or chassis number, so it "
+            "cannot be checked against the registry. It may not be a car ad."
+        )
+
+    official = summarize_vehicle(
+        await _vegvesen.lookup(plate=plate) if plate else await _vegvesen.lookup(vin=vin)
+    )
+
+    findings = compare_claims(props, official, _today())
+
+    return {
+        "listing": {
+            "name": listing.get("name"),
+            "url": listing.get("url"),
+            "price": listing.get("price"),
+            "claimed": {k: props.get(k) for k in
+                        ("year", "mileage", "transmission", "fuel", "eu_check_next")
+                        if props.get(k) is not None},
+        },
+        "official": official,
+        "findings": findings,
+        "verdict": (
+            "Nothing in the registry contradicts the ad."
+            if not findings
+            else f"{len(findings)} thing(s) worth raising with the seller."
+        ),
+        "caveat": "Mileage cannot be verified — the registry publishes no odometer readings.",
+    }
+
+
+def _today() -> str:
+    from datetime import date
+    return date.today().isoformat()
 
 
 def main() -> None:

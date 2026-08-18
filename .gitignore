@@ -26,6 +26,9 @@ uv.lock.local
 .mypy_cache/
 .ruff_cache/
 .DS_Store
+# Secrets — never commit. Your Vegvesen API key lives here.
 .env
+.env.*
+!.env.example
 .idea/
 .vscode/

@@ -46,6 +46,26 @@ may contain personal data (faces, plates, home interiors). That is another
 reason this tool never stores, republishes, or trains on them. Storing or
 sharing fetched images would leave the private-use carve-out immediately.
 
+## On the vehicle registry
+
+`verify_car` and `lookup_vehicle` use Statens vegvesen's open API. That data is
+public: offentleglova §7 states that information released under public-access
+legislation *"kan brukast til eitkvart formål"* — may be used for any purpose —
+subject only to other legislation and third-party rights, and the dataset is
+licensed CC-BY 4.0. Attribution is therefore included in every result.
+
+Two obligations follow, and Sporhund is built around them:
+
+- **Keys are personal.** Each user orders their own with their own electronic ID
+  and is personally responsible for its use. Sporhund reads your key from your
+  own machine and sends it nowhere but Statens vegvesen. It must never be
+  bundled with the software, shared, or proxied through a server — that would
+  make one person answerable for everyone's queries, and would turn the operator
+  into a data controller for other people's processing.
+- **Registration and chassis numbers are personal data.** They are therefore
+  never cached, logged, or written to disk. The API returns no owner information
+  at all, which removes the most sensitive category entirely.
+
 ## Why the line is drawn here
 
 FINN.no's terms prohibit automated access and, in the business terms, explicitly

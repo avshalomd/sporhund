@@ -23,6 +23,8 @@ The server exposes these tools to your agent:
 | `search_finn` | Search **torget** (secondhand goods), **car** (used cars), or **job** (jobs) with free text, price/year/mileage filters, sorting, and paging. Returns structured listings plus quick price statistics (min / median / mean / max). Each listing reports `trade_type` and `seller_type`, so giveaways ("Gis bort") and wanted-to-buy ads ("Ønskes kjøpt") are distinguishable from real sales. |
 | `get_listing` | Fetch one listing's **full** seller description (not the ~160-char SEO stub), price, condition, and attributes by finnkode or URL. For cars this includes year, mileage, owners, fuel, power, transmission, first registration, next EU-check date, known-damage/repair flags, and the full equipment list. |
 | `view_listing_images` | Actually **look** at a listing's photos — condition, wear, rust, what's in the box. Fetches up to 6 images (default 3) at a chosen width into memory only; nothing is saved. Skip it when the text already answers the question: images cost far more context than text. |
+| `verify_car` | **Check a car ad against Norway's official vehicle registry.** Surfaces what FINN never shows: a car that is currently deregistered, an EU-control date that contradicts the ad, an import, or an ex-rental/ex-taxi. Needs your own Vegvesen key. |
+| `lookup_vehicle` | Raw registry lookup by registration or chassis number. |
 | `create_watch` | Save a search under a name (stored locally). |
 | `check_watch` | Re-run a saved search and return **only listings you haven't seen before** — a smarter, agent-driven version of *lagrede søk*. |
 | `list_watches` / `delete_watch` | Manage your saved watches. |
@@ -55,6 +57,32 @@ It's the natural next addition — see *Roadmap*.
 
 - Python ≥ 3.10
 - [`uv`](https://docs.astral.sh/uv/) (recommended) or pip
+- *Optional:* a Statens vegvesen API key, for the vehicle-registry tools
+
+### Optional: vehicle registry access
+
+`verify_car` and `lookup_vehicle` read Norway's official vehicle registry. That
+needs an API key, which is **personal to you** — order your own with BankID
+(free, 50 000 lookups/day):
+
+<https://www.vegvesen.no/kjoretoy/eie/kjoretoyopplysninger/bestill-api-nokkel/>
+
+Copy `.env.example` to `.env` and paste the key in:
+
+```bash
+cp .env.example .env && chmod 600 .env   # then edit VEGVESEN_API_KEY=
+```
+
+`.env` is git-ignored. **Never commit, bundle or share a key** — you are
+personally responsible for its use, and a shared key gets withdrawn. Everything
+still works without one; only the registry tools switch off.
+
+Registry data is © Statens vegvesen (Kjøretøyregisteret), licensed
+[CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/). It contains no owner
+information.
+
+**What it cannot do:** the registry publishes no odometer readings, so a claimed
+mileage can only be judged against comparable listings, never verified.
 
 ## Install & run
 
@@ -128,11 +156,13 @@ ever committed.**
 | Env var | Purpose | Default |
 |---------|---------|---------|
 | `SPORHUND_DB` | Path to the local watch database | `~/.local/share/sporhund/watches.db` |
+| `VEGVESEN_API_KEY` | Statens vegvesen key, for the registry tools | unset (tools disabled) |
 
 ## Roadmap
 
 - [ ] Real estate (Eiendom) buy + rent — add a React-Router stream parser.
-- [ ] Richer car-deal context (pull public Statens vegvesen vehicle data).
+- [x] Car ads cross-checked against Statens vegvesen's vehicle registry.
+- [ ] Deal scoring: position a car against its comparables on FINN.
 - [ ] "Draft first message" / negotiation-prep prompts as MCP prompts.
 - [ ] Optional desktop notifications for `check_watch`.
 
