@@ -8,11 +8,11 @@ can hunt for a car, a flat or a bargain by just describing what you want.
 It is a *connector*, not an agent: it hands your agent clean data and sharp
 tools, and your agent does the thinking.
 
-> **Personal use only.** This is a convenience layer over your own browsing, not
-> a data service. It fetches public FINN pages on demand, paces requests
+> **Built for personal use.** This is a convenience layer over your own browsing,
+> not a data service. It fetches public FINN pages on demand, paces requests
 > politely, keeps everything on your machine, and never stores or redistributes
 > FINN's content. Please read [NOTICE.md](NOTICE.md) — it explains the legal line
-> this project deliberately stays on the safe side of.
+> this project is designed to stay on the safe side of, and why you should too.
 
 ## What it can do
 
@@ -170,6 +170,11 @@ ever committed.**
 Anything beyond personal use goes through the sanctioned route first (FINN
 partner API / written consent from Vend). See [NOTICE.md](NOTICE.md).
 
-## License
+## License & disclaimer
 
-Personal, non-commercial use only — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE). The code is free to use; **how you use it against
+FINN.no is governed by FINN's own terms** — see [NOTICE.md](NOTICE.md) for the
+responsible-use guidance this project is designed around.
+
+Sporhund is an independent project, **not affiliated with or endorsed by
+FINN.no or Vend Marketplaces**.

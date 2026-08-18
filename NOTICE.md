@@ -1,6 +1,15 @@
 # Notice on use, and on FINN.no's terms
 
-**Read this before running the tool, and before ever considering making it public or commercial.**
+**Read this before running the tool, and before building anything on top of it.**
+
+The code is MIT-licensed — the license places no restrictions on you. This
+notice exists because *using* the software against FINN.no is a separate
+question governed by FINN's terms and Norwegian/EEA law, and because the
+design decisions below are what keep that use defensible. They are guidance,
+not license terms — but they are well-founded, and ignoring them transfers the
+risk to you, the operator.
+
+Sporhund is not affiliated with or endorsed by FINN.no or Vend Marketplaces.
 
 This project is a **personal-use convenience layer** over your own browsing of
 FINN.no. It loads the same public pages a person would open in a browser, reads
@@ -21,7 +30,7 @@ It **does**:
 - present a normal browser identity, because it is loading the same pages a
   person would.
 
-It **does not**, and must not be changed to do:
+It **does not**, and is deliberately designed never to do:
 
 - run background crawlers, bulk downloads, or mirror FINN's catalogue;
 - store, aggregate, publish, or redistribute FINN's listing data;
