@@ -1,0 +1,29 @@
+# Publishes sporhund to PyPI via trusted publishing (OIDC) — no tokens stored.
+# Trigger: publish a GitHub release. One-time setup on pypi.org is documented
+# in CONTRIBUTING notes / README.
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write   # OIDC for PyPI trusted publishing
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Run tests
+        run: |
+          uv sync --group dev
+          uv run pytest -q
+      - name: Build sdist and wheel
+        run: uv build
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

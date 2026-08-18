@@ -1,5 +1,7 @@
 # Sporhund
 
+<!-- mcp-name: io.github.avshalomd/sporhund -->
+
 **A FINN.no connector for your AI agent.** Sporhund ("bloodhound" in Norwegian)
 gives Claude — or any MCP client — the ability to search, inspect and track
 listings on [FINN.no](https://www.finn.no), Norway's dominant marketplace, so you
@@ -87,12 +89,27 @@ mileage can only be judged against comparable listings, never verified.
 
 ## Install & run
 
+Once published to PyPI, no clone or setup is needed — any MCP client can run it
+directly:
+
+```bash
+uvx sporhund
+```
+
+From a checkout of this repo instead:
+
 ```bash
 uv sync
 uv run sporhund
 ```
 
-That starts the MCP server on stdio. Point your MCP client at it.
+Either starts the MCP server on stdio. Point your MCP client at it.
+
+### Codex CLI
+
+```bash
+codex mcp add sporhund -- uvx sporhund
+```
 
 ### Claude Code
 
