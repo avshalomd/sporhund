@@ -18,14 +18,14 @@ from typing import Any
 
 
 def default_db_path() -> Path:
-    """Per-user data location, overridable with FINN_AGENT_DB for tests."""
-    override = os.environ.get("FINN_AGENT_DB")
+    """Per-user data location, overridable with SPORHUND_DB for tests."""
+    override = os.environ.get("SPORHUND_DB")
     if override:
         return Path(override).expanduser()
     base = Path(
         os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")
     )
-    return base / "finn-agent" / "watches.db"
+    return base / "sporhund" / "watches.db"
 
 
 class Store:

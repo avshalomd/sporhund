@@ -1,19 +1,18 @@
-# finn-agent
+# Sporhund
 
-A small **MCP server** that lets an AI agent (Claude, or any MCP client) search
-and *watch* [FINN.no](https://www.finn.no) listings on your behalf — turning
-FINN's browse-and-refresh experience into something you can drive with natural
-language.
+**A FINN.no connector for your AI agent.** Sporhund ("bloodhound" in Norwegian)
+gives Claude — or any MCP client — the ability to search, inspect and track
+listings on [FINN.no](https://www.finn.no), Norway's dominant marketplace, so you
+can hunt for a car, a flat or a bargain by just describing what you want.
+
+It is a *connector*, not an agent: it hands your agent clean data and sharp
+tools, and your agent does the thinking.
 
 > **Personal use only.** This is a convenience layer over your own browsing, not
 > a data service. It fetches public FINN pages on demand, paces requests
 > politely, keeps everything on your machine, and never stores or redistributes
 > FINN's content. Please read [NOTICE.md](NOTICE.md) — it explains the legal line
 > this project deliberately stays on the safe side of.
-
-This is **Phase 0** of the FINN-agent project: a private prototype to learn the
-data model and validate the value before deciding whether to pursue a sanctioned
-partnership or a user-side product. See [REPORT.md](REPORT.md) for the strategy.
 
 ## What it can do
 
@@ -61,7 +60,7 @@ It's the natural next addition — see *Roadmap*.
 
 ```bash
 uv sync
-uv run finn-agent
+uv run sporhund
 ```
 
 That starts the MCP server on stdio. Point your MCP client at it.
@@ -69,7 +68,7 @@ That starts the MCP server on stdio. Point your MCP client at it.
 ### Claude Code
 
 A project-scoped [`.mcp.json`](.mcp.json) is committed, so opening this
-directory in Claude Code offers the server automatically — approve `finn` once
+directory in Claude Code offers the server automatically — approve `sporhund` once
 when prompted and the six tools appear. (It uses an absolute path; adjust it if
 you move the repo.)
 
@@ -78,9 +77,9 @@ you move the repo.)
 ```json
 {
   "mcpServers": {
-    "finn": {
+    "sporhund": {
       "command": "uv",
-      "args": ["run", "--directory", "/Users/avshalom/projects/finn-agent", "finn-agent"]
+      "args": ["run", "--directory", "/Users/avshalom/projects/sporhund", "sporhund"]
     }
   }
 }
@@ -109,7 +108,7 @@ Then ask Claude to search or watch FINN in plain language.
 - Pacing: a process-wide minimum interval between requests (default 2 s); one
   request per tool call; no background loops.
 - Storage: a local SQLite file under your user data dir
-  (`~/.local/share/finn-agent/watches.db`, overridable with `FINN_AGENT_DB`).
+  (`~/.local/share/sporhund/watches.db`, overridable with `SPORHUND_DB`).
   It records only which listing ids a watch has already seen — never a copy of
   FINN's content.
 
@@ -128,7 +127,7 @@ ever committed.**
 
 | Env var | Purpose | Default |
 |---------|---------|---------|
-| `FINN_AGENT_DB` | Path to the local watch database | `~/.local/share/finn-agent/watches.db` |
+| `SPORHUND_DB` | Path to the local watch database | `~/.local/share/sporhund/watches.db` |
 
 ## Roadmap
 

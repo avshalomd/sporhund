@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "finn": {
+    "sporhund": {
       "command": "uv",
-      "args": ["run", "--directory", "/Users/avshalom/projects/finn-agent", "finn-agent"]
+      "args": ["run", "--directory", "/Users/avshalom/projects/sporhund", "sporhund"]
     }
   }
 }

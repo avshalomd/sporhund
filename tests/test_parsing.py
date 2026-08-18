@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from finn_agent.finn import (
+from sporhund.finn import (
     _canonical_item_url,
     _coerce_price,
     _parse_listing,
@@ -186,7 +186,7 @@ def test_bare_finnkode_resolves_via_site_root() -> None:
 
 
 def test_refuses_non_finn_urls() -> None:
-    from finn_agent.finn import FinnError
+    from sporhund.finn import FinnError
 
     with pytest.raises(FinnError):
         _canonical_item_url("https://evil.example.com/item/123456")
@@ -227,7 +227,7 @@ def test_parse_car_listing() -> None:
 
 
 def test_price_stats() -> None:
-    from finn_agent.finn import Listing, summarize
+    from sporhund.finn import Listing, summarize
 
     listings = [
         Listing(finnkode="1", heading="a", url="u", price=100),

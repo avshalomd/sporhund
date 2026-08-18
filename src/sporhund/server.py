@@ -2,7 +2,7 @@
 
 Run over stdio (the usual MCP transport):
 
-    uv run finn-agent
+    uv run sporhund
 
 Then point an MCP client (e.g. Claude Desktop / Claude Code) at it. The tools
 here fetch public FINN pages on demand, one request per call, and keep any state
@@ -32,7 +32,7 @@ from .finn import (
 from .store import Store
 
 # Advertised to clients in serverInfo, so a connected agent can tell versions apart.
-mcp = _Server("finn-agent", version=__version__)
+mcp = _Server("sporhund", version=__version__)
 
 Vertical = Literal["torget", "car", "job"]
 _client = FinnClient()
