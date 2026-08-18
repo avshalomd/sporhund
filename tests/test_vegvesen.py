@@ -92,7 +92,7 @@ def test_clean_car_produces_no_findings() -> None:
     "claimed,official,expected_issue,severity",
     [
         ({}, {"registration_status": "Avregistrert", "deregistered_since": "2025-12-12T00:00:00+01:00"},
-         "Car is deregistered", "high"),
+         "Currently deregistered", "info"),
         ({}, {"eu_control_due": "2025-01-01"}, "EU control overdue", "high"),
         ({"eu_check_next": "2027-01-01"}, {"eu_control_due": "2027-06-21"},
          "EU-control date disagrees", "medium"),
@@ -116,3 +116,19 @@ def test_registration_lag_is_not_reported_as_a_mismatch() -> None:
         {"year": 2018}, {"first_registered_norway": "2019-01-15"}, "2026-08-18"
     )
     assert findings == []
+
+
+def test_doors_are_never_compared() -> None:
+    """Door-counting conventions differ ad-vs-registry; the check was pure noise."""
+    findings = compare_claims({"no_of_doors": 5}, {"doors": 4}, "2026-08-18")
+    assert findings == []
+
+
+def test_deregistered_is_informational_not_alarming() -> None:
+    """Roughly half of live listings are temporarily deregistered — routine."""
+    f = compare_claims(
+        {}, {"registration_status": "Avregistrert", "deregistered_since": "2026-07-29T12:00:00+02:00"},
+        "2026-08-18",
+    )
+    assert len(f) == 1 and f[0]["severity"] == "info"
+    assert "test-driven" in f[0]["detail"]

@@ -29,6 +29,7 @@ from .finn import (
     SEARCH_URLS,
     summarize,
 )
+from .cars import brief, comparable_query, median_of, price_position
 from .store import Store
 from .vegvesen import (
     VegvesenClient,
@@ -330,7 +331,9 @@ async def verify_car(finnkode_or_url: str) -> dict[str, Any]:
         await _vegvesen.lookup(plate=plate) if plate else await _vegvesen.lookup(vin=vin)
     )
 
-    findings = compare_claims(props, official, _today())
+    findings = compare_claims(
+        props, official, _today(), seller_type=listing.get("seller_type")
+    )
 
     return {
         "listing": {
@@ -350,6 +353,82 @@ async def verify_car(finnkode_or_url: str) -> dict[str, Any]:
         ),
         "caveat": "Mileage cannot be verified — the registry publishes no odometer readings.",
     }
+
+
+@mcp.tool()
+async def find_comparables(
+    finnkode_or_url: str,
+    year_spread: int = 1,
+    mileage_spread: int = 40000,
+    query: str = "",
+) -> dict[str, Any]:
+    """Position a car against the listings a buyer would cross-shop.
+
+    Fetches the ad, searches FINN for the same model within a year and mileage
+    band, and reports where this price sits: percentile, distance from the
+    median, and the cheapest alternatives. This is the negotiation groundwork —
+    "the median comparable is 14 000 kr cheaper" is leverage; a price well
+    below market is its own question.
+
+    Honest limits, tell the user when they matter: these are asking prices,
+    not sold prices; and free-text matching cannot see trim or equipment, so
+    skim the comparables list before leaning on the numbers. No API key needed.
+
+    Args:
+        finnkode_or_url: The car listing to position.
+        year_spread: Comparable years = subject year ± this (default 1).
+        mileage_spread: Comparable mileage = subject km ± this (default 40 000).
+        query: Override the auto-derived model search (use when the auto query
+            comes back too broad or too narrow — check `search_used` in the result).
+    """
+    subject = await _client.get_listing(finnkode_or_url)
+    props = subject.get("properties") or {}
+    name = subject.get("name")
+
+    q = query.strip() or comparable_query(name)
+    if not q:
+        raise ValueError("Could not derive a model query from this ad; pass `query`.")
+
+    filters: dict[str, Any] = {}
+    year, mileage = props.get("year"), props.get("mileage")
+    if year:
+        filters["year_from"], filters["year_to"] = year - year_spread, year + year_spread
+    if isinstance(mileage, int):
+        filters["mileage_from"] = max(0, mileage - mileage_spread)
+        filters["mileage_to"] = mileage + mileage_spread
+
+    result = await _client.search("car", query=q, filters=filters)
+    subject_code = str(subject.get("url", "")).rstrip("/").rsplit("/", 1)[-1]
+    comps = [l for l in result.listings if l.finnkode != subject_code]
+
+    out: dict[str, Any] = {
+        "subject": {
+            "name": name, "price": subject.get("price"),
+            "year": year, "mileage": mileage, "url": subject.get("url"),
+        },
+        "search_used": {"query": q, "filters": filters,
+                        "total_matches": result.total_matches},
+        "comparables_seen": len(comps),
+    }
+    price = subject.get("price")
+    if isinstance(price, int) and comps:
+        pos = price_position(price, [l.price for l in comps if l.price])
+        out["position"] = pos
+        out["comparables_median_year"] = median_of([l.extra.get("year") for l in comps])
+        out["comparables_median_mileage"] = median_of([l.extra.get("mileage") for l in comps])
+        out["cheapest_comparables"] = [
+            brief(l) for l in sorted((l for l in comps if l.price), key=lambda x: x.price)[:8]
+        ]
+        if pos.get("n", 0) < 5:
+            out["warning"] = (
+                "Fewer than 5 comparables — widen year_spread/mileage_spread or "
+                "adjust `query` before trusting the position."
+            )
+    out["caveats"] = (
+        "Asking prices, not sold prices. Trim/equipment not matched — skim the "
+        "comparables before quoting numbers."
+    )
+    return out
 
 
 def _today() -> str:

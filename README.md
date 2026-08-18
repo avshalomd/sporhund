@@ -23,8 +23,9 @@ The server exposes these tools to your agent:
 | `search_finn` | Search **torget** (secondhand goods), **car** (used cars), or **job** (jobs) with free text, price/year/mileage filters, sorting, and paging. Returns structured listings plus quick price statistics (min / median / mean / max). Each listing reports `trade_type` and `seller_type`, so giveaways ("Gis bort") and wanted-to-buy ads ("Ønskes kjøpt") are distinguishable from real sales. |
 | `get_listing` | Fetch one listing's **full** seller description (not the ~160-char SEO stub), price, condition, and attributes by finnkode or URL. For cars this includes year, mileage, owners, fuel, power, transmission, first registration, next EU-check date, known-damage/repair flags, and the full equipment list. |
 | `view_listing_images` | Actually **look** at a listing's photos — condition, wear, rust, what's in the box. Fetches up to 6 images (default 3) at a chosen width into memory only; nothing is saved. Skip it when the text already answers the question: images cost far more context than text. |
-| `verify_car` | **Check a car ad against Norway's official vehicle registry.** Surfaces what FINN never shows: a car that is currently deregistered, an EU-control date that contradicts the ad, an import, or an ex-rental/ex-taxi. Needs your own Vegvesen key. |
+| `verify_car` | **Check a car ad against Norway's official vehicle registry.** Surfaces what FINN never shows: an ex-rental/ex-taxi, an import, an EU-control date that contradicts the ad, or a deregistered car (routine while listed — flagged as info with practical advice, since ~half of fresh listings are). Needs your own Vegvesen key. |
 | `lookup_vehicle` | Raw registry lookup by registration or chassis number. |
+| `find_comparables` | Position a car against the listings a buyer would cross-shop: price percentile, distance from the median, cheapest alternatives. Asking prices, not sold prices — and no API key needed. |
 | `create_watch` | Save a search under a name (stored locally). |
 | `check_watch` | Re-run a saved search and return **only listings you haven't seen before** — a smarter, agent-driven version of *lagrede søk*. |
 | `list_watches` / `delete_watch` | Manage your saved watches. |
@@ -162,7 +163,7 @@ ever committed.**
 
 - [ ] Real estate (Eiendom) buy + rent — add a React-Router stream parser.
 - [x] Car ads cross-checked against Statens vegvesen's vehicle registry.
-- [ ] Deal scoring: position a car against its comparables on FINN.
+- [x] Deal scoring: `find_comparables` positions a car against its market.
 - [ ] "Draft first message" / negotiation-prep prompts as MCP prompts.
 - [ ] Optional desktop notifications for `check_watch`.
 

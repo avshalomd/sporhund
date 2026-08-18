@@ -204,7 +204,10 @@ NOTABLE_USE = ("drosje", "taxi", "utleie", "øving", "ambulanse", "utrykning")
 
 
 def compare_claims(
-    claimed: dict[str, Any], official: dict[str, Any], today: str
+    claimed: dict[str, Any],
+    official: dict[str, Any],
+    today: str,
+    seller_type: str | None = None,
 ) -> list[dict[str, str]]:
     """Return everything in the registry that contradicts or qualifies an ad."""
     findings: list[dict[str, str]] = []
@@ -213,10 +216,18 @@ def compare_claims(
         findings.append({"severity": severity, "issue": issue, "detail": detail})
 
     if "avregistrert" in (official.get("registration_status") or "").lower():
+        # Measured on live samples: roughly half of fresh listings are
+        # temporarily deregistered — sellers hand in the plates to stop the
+        # traffic-insurance fee while the car is up for sale. Routine, but a
+        # buyer still needs to know: no test drive on public roads until it is
+        # re-registered (or on dealer plates), and re-registration requires a
+        # valid EU-kontroll.
         since = (official.get("deregistered_since") or "")[:10]
-        flag("high", "Car is deregistered",
-             f"The registry lists this vehicle as deregistered since {since}. It "
-             "cannot legally be driven until re-registered — ask the seller why.")
+        flag("info", "Currently deregistered",
+             f"Deregistered since {since}. Common while a car is listed for "
+             "sale (saves the traffic-insurance fee), but it cannot be "
+             "test-driven on public roads until re-registered — plan for that, "
+             "and confirm the EU-kontroll is valid, which re-registration requires.")
 
     due = official.get("eu_control_due")
     if due:
@@ -245,10 +256,11 @@ def compare_claims(
              f"Registered use: {usage}. Ex-taxi, rental and driving-school cars carry "
              "far more wear than the odometer suggests.")
 
+    # Doors deliberately not compared: counting conventions differ between ads
+    # and the registry (fired on 6 of 10 clean listings in live sampling).
     for ad_key, off_key, label in (
         ("transmission", "transmission", "Transmission"),
         ("no_of_seats", "seats", "Seats"),
-        ("no_of_doors", "doors", "Doors"),
     ):
         a, o = claimed.get(ad_key), official.get(off_key)
         if a is not None and o is not None and str(a).lower() != str(o).lower():
