@@ -26,6 +26,9 @@ uv.lock.local
 .mypy_cache/
 .ruff_cache/
 .DS_Store
+# Private strategy notes — local only.
+REPORT.md
+
 # Secrets — never commit. Your Vegvesen API key lives here.
 .env
 .env.*
