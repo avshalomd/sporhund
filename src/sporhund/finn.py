@@ -85,6 +85,11 @@ _DATA_PROPS_RE = re.compile(r'data-props="([A-Za-z0-9+/=]+)"')
 _DESC_SECTION_RE = re.compile(
     r'<section[^>]*data-testid="description"[^>]*>(.*?)</section>', re.S
 )
+# Both Torget and car pages render the seller's free text in a div whose class
+# list contains whitespace-pre-wrap (Torget wraps it in a data-testid section,
+# car pages in an "expandable-section" under an <h2>Beskrivelse</h2>).
+_PREWRAP_OPEN_RE = re.compile(r'<div[^>]*class="[^"]*whitespace-pre-wrap[^"]*"[^>]*>')
+_DIV_TOKEN_RE = re.compile(r"<div\b|</div\s*>", re.I)
 _STRIP_BLOCKS_RE = re.compile(r"<(script|style|button)\b.*?</\1>", re.S)
 _BR_RE = re.compile(r"<br\s*/?>", re.I)
 _BLOCK_END_RE = re.compile(r"</(?:p|div|li|h\d)\s*>", re.I)
@@ -140,9 +145,12 @@ class SearchResult:
     page: int
     last_page: int | None
     listings: list[Listing]
+    # Filter keys the caller sent that FINN did not recognize (it ignores them
+    # silently, which turns a typo into a subtly wrong result set).
+    ignored_filters: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out = {
             "vertical": self.vertical,
             "query_url": self.query_url,
             "total_matches": self.total_matches,
@@ -151,6 +159,15 @@ class SearchResult:
             "count": len(self.listings),
             "listings": [l.to_dict() for l in self.listings],
         }
+        if self.ignored_filters:
+            out["ignored_filters"] = self.ignored_filters
+            out["warning"] = (
+                "FINN did not recognize these filter parameters and ignored "
+                "them — the results are broader than requested. Use "
+                "get_search_filters to see valid names and values: "
+                + ", ".join(self.ignored_filters)
+            )
+        return out
 
 
 class FinnClient:
@@ -212,7 +229,39 @@ class FinnClient:
         html, _ = await self._get(base, params=params)
         result = _parse_search(html, vertical)
         result.query_url = f"{base}?{urlencode(params)}" if params else base
+        sent = {_RANGE_ALIASES.get(k, k) for k in (filters or {})}
+        applied = _applied_filter_params(html)
+        if sent and applied is not None:
+            result.ignored_filters = sorted(sent - applied)
         return result
+
+    async def get_filters(
+        self,
+        vertical: str,
+        query: str | None = None,
+        filters: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Fetch one search page and return FINN's own filter metadata for it."""
+        if vertical not in SEARCH_URLS:
+            raise FinnError(
+                f"Unknown vertical {vertical!r}. Known: {', '.join(SEARCH_URLS)}"
+            )
+        params: dict[str, str] = {}
+        if query:
+            params["q"] = query
+        for key, value in (filters or {}).items():
+            if value not in (None, ""):
+                params[_RANGE_ALIASES.get(key, key)] = str(value)
+        html, _ = await self._get(SEARCH_URLS[vertical], params=params)
+        state = _decode_state(html)
+        results = _find_results(state)
+        if results is None:
+            raise FinnError("No filter metadata found on the search page.")
+        return {
+            "vertical": vertical,
+            "total_matches": (results.get("metadata", {}).get("result_size") or {}).get("match_count"),
+            "filters": _parse_filters(results.get("filters") or []),
+        }
 
     # -- single listing --------------------------------------------------------
 
@@ -252,6 +301,67 @@ class FinnClient:
 
 
 # -- parsing helpers -----------------------------------------------------------
+
+
+def _applied_filter_params(html: str) -> set[str] | None:
+    """Parameter names FINN actually APPLIED as filters on this search.
+
+    metadata.params is just an echo of what was received (it includes
+    unrecognized names), but metadata.selected_filters lists only the filters
+    that took effect — the reliable signal for detecting silently-ignored
+    parameters. Returns None when the page can't be read (fail open).
+    """
+    try:
+        results = _find_results(_decode_state(html))
+        selected = (results or {}).get("metadata", {}).get("selected_filters") or []
+        return {
+            p.get("parameter_name")
+            for fl in selected
+            for p in (fl.get("parameters") or [])
+            if p.get("parameter_name")
+        }
+    except Exception:
+        return None
+
+
+def _parse_filters(raw_filters: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Normalize FINN's filter metadata into something an agent can use."""
+    out: list[dict[str, Any]] = []
+    for f in raw_filters:
+        if not isinstance(f, dict) or not f.get("name"):
+            continue
+        entry: dict[str, Any] = {
+            "name": f["name"],
+            "display_name": f.get("display_name"),
+        }
+        if f.get("type") == "RANGE_FILTER":
+            entry["type"] = "range"
+            entry["params"] = [f.get("name_from"), f.get("name_to")]
+            if f.get("unit"):
+                entry["unit"] = f["unit"]
+        items = f.get("filter_items") or []
+        values = []
+        for it in items[:100]:
+            if not isinstance(it, dict):
+                continue
+            v: dict[str, Any] = {
+                "label": it.get("display_name"),
+                "value": it.get("value"),
+                "hits": it.get("hits"),
+            }
+            children = it.get("filter_items") or []
+            if children:
+                v["children"] = [
+                    {"label": c.get("display_name"), "value": c.get("value"),
+                     "hits": c.get("hits")}
+                    for c in children[:60]
+                    if isinstance(c, dict)
+                ]
+            values.append(v)
+        if values:
+            entry["values"] = values
+        out.append(entry)
+    return out
 
 
 def _decode_state(html: str) -> dict[str, Any]:
@@ -334,6 +444,9 @@ def _seller_type(doc: dict[str, Any]) -> str | None:
     if "private" in flags:
         return "private"
     seg = doc.get("dealer_segment")
+    if isinstance(seg, str):
+        # Car docs label the segment: "Privat", "Merkeforhandler", "Forhandler".
+        return "private" if seg.lower().startswith("privat") else "dealer"
     if seg:
         return "dealer"
     return None
@@ -409,16 +522,11 @@ def _canonical_item_url(finnkode_or_url: str) -> str:
     return f"https://www.finn.no/{m.group(1)}"
 
 
-def _extract_full_description(html: str) -> str | None:
-    """Pull the seller's complete free text out of the rendered page."""
-    m = _DESC_SECTION_RE.search(html)
-    if not m:
-        return None
-    frag = _STRIP_BLOCKS_RE.sub("", m.group(1))
+def _clean_fragment(frag: str) -> str | None:
+    frag = _STRIP_BLOCKS_RE.sub("", frag)
     frag = _BR_RE.sub("\n", frag)
     frag = _BLOCK_END_RE.sub("\n", frag)
     text = htmllib.unescape(_TAG_RE.sub("", frag))
-
     lines: list[str] = []
     for raw_line in text.split("\n"):
         line = raw_line.strip()
@@ -427,6 +535,36 @@ def _extract_full_description(html: str) -> str | None:
         elif lines and lines[-1]:  # collapse runs of blank lines
             lines.append("")
     return "\n".join(lines).strip() or None
+
+
+def _balanced_div_inner(html: str, content_start: int) -> str:
+    """Inner HTML of a div whose opening tag ends at content_start."""
+    depth = 1
+    for m in _DIV_TOKEN_RE.finditer(html, content_start):
+        depth += 1 if m.group(0).lower().startswith("<div") else -1
+        if depth == 0:
+            return html[content_start : m.start()]
+    return html[content_start : content_start + 20000]  # unbalanced page: cap
+
+
+def _extract_full_description(html: str) -> str | None:
+    """Pull the seller's complete free text out of the rendered page.
+
+    Candidates: the Torget description section, plus every whitespace-pre-wrap
+    div (car pages). Longest cleaned candidate wins — ads may render several
+    small pre-wrap blocks for other content.
+    """
+    candidates: list[str] = []
+    m = _DESC_SECTION_RE.search(html)
+    if m:
+        cleaned = _clean_fragment(m.group(1))
+        if cleaned:
+            candidates.append(cleaned)
+    for open_tag in _PREWRAP_OPEN_RE.finditer(html):
+        cleaned = _clean_fragment(_balanced_div_inner(html, open_tag.end()))
+        if cleaned:
+            candidates.append(cleaned)
+    return max(candidates, key=len, default=None)
 
 
 def _parse_listing(html: str, url: str) -> dict[str, Any]:

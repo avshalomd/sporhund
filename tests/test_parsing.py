@@ -236,3 +236,77 @@ def test_price_stats() -> None:
     ]
     stats = summarize(listings)
     assert stats == {"count": 3, "min": 100, "median": 200, "max": 300, "mean": 200}
+
+
+def test_car_description_full_text_not_seo_stub() -> None:
+    """Field-tested regression: car pages put the seller's text in a
+    whitespace-pre-wrap div under <h2>Beskrivelse</h2>, not in the Torget-style
+    data-testid section — extraction returned None and silently fell back to
+    the ~156-char JSON-LD stub."""
+    html = _read("car_item_description.html")
+    if html is None:
+        pytest.skip("fixture car_item_description.html not present")
+    data = _parse_listing(html, "https://www.finn.no/mobility/item/470979797")
+    desc = data.get("description") or ""
+    assert len(desc) > 400, f"still the SEO stub: {len(desc)} chars"
+    assert "<" not in desc and "&nbsp;" not in desc
+
+
+def test_car_private_seller_is_not_labeled_dealer() -> None:
+    """Car docs carry dealer_segment as a label; 'Privat' must map to private."""
+    from sporhund.finn import _seller_type
+
+    assert _seller_type({"dealer_segment": "Privat"}) == "private"
+    assert _seller_type({"dealer_segment": "Merkeforhandler"}) == "dealer"
+    assert _seller_type({"dealer_segment": "Forhandler"}) == "dealer"
+    assert _seller_type({"flags": ["private"]}) == "private"
+    assert _seller_type({}) is None
+
+
+def test_filter_metadata_is_parsed() -> None:
+    """get_search_filters feeds on the same page state searches use."""
+    import base64 as b64
+    import json as jsonlib
+    import re as relib
+
+    from sporhund.finn import _decode_state, _find_results, _parse_filters
+
+    html = _read("car_search.html")
+    if html is None:
+        pytest.skip("fixture car_search.html not present")
+    results = _find_results(_decode_state(html))
+    parsed = _parse_filters(results["filters"])
+    by_name = {f["name"]: f for f in parsed}
+
+    fuel = by_name.get("fuel")
+    assert fuel and any(
+        v["label"] == "Hybrid bensin" and v["value"] == "6" for v in fuel["values"]
+    )
+    seg = by_name.get("dealer_segment")
+    assert seg and any(
+        v["label"] == "Privat" and v["value"] == "3" for v in seg["values"]
+    ), "car vertical: Privat must be dealer_segment=3"
+    price = by_name.get("price")
+    assert price and price.get("type") == "range"
+    assert price.get("params") == ["price_from", "price_to"]
+    location = by_name.get("location")
+    assert location and any(v.get("children") for v in location["values"]), (
+        "counties should carry municipality children"
+    )
+
+
+def test_ignored_filters_detection() -> None:
+    """FINN applies unknown params to nothing; we must surface that.
+
+    metadata.params echoes even unrecognized names, so detection must use
+    selected_filters — the list of filters that actually took effect.
+    """
+    from sporhund.finn import _applied_filter_params
+
+    html = _read("car_search.html")
+    if html is None:
+        pytest.skip("fixture car_search.html not present")
+    applied = _applied_filter_params(html)
+    assert isinstance(applied, set)
+    # fixture fetched with ?q=golf only — no filter params were applied
+    assert "number_of_seats_from" not in applied

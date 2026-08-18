@@ -85,11 +85,16 @@ async def search_finn(
         sort: Optional FINN sort key, e.g. "PUBLISHED_DESC" (newest first).
         filters: Optional JSON object string of extra FINN query parameters.
             Common ones: price_from, price_to (kr); for cars also year_from,
-            year_to, mileage_from, mileage_to. Useful raw FINN filters:
-            {"dealer_segment": "1"} private sellers only ("3" = dealers);
-            {"trade_type": "1"} genuine for-sale ads only ("2" = giveaways,
-            "3" = wanted-to-buy) — worth setting on Torget, where giveaway and
-            wanted ads otherwise appear alongside real listings.
+            year_to, mileage_from, mileage_to, seats_from, seats_to.
+            Coded filter values DIFFER PER VERTICAL — call get_search_filters
+            for the authoritative names, values and hit counts. Examples that
+            matter: private sellers are {"dealer_segment": "1"} on torget but
+            {"dealer_segment": "3"} on car; {"trade_type": "1"} keeps Torget
+            results to genuine for-sale ads; on car, {"sales_form": "1"} keeps
+            to used cars for sale — otherwise LEASING ads appear with their
+            monthly rate as the price (a "12 500 kr" 2025 Volvo is a lease).
+            Unrecognized filter names are silently ignored by FINN; the result
+            reports them under `ignored_filters`.
 
     Each listing reports `trade_type` and `seller_type` so giveaways and
     wanted-to-buy ads can be told apart from real for-sale listings.
@@ -106,6 +111,35 @@ async def search_finn(
     out = result.to_dict()
     out["price_stats"] = summarize(result.listings)
     return out
+
+
+
+@mcp.tool()
+async def get_search_filters(
+    vertical: Vertical,
+    query: str = "",
+    filters: str = "",
+) -> dict[str, Any]:
+    """Discover the search filters FINN supports for a vertical, with live counts.
+
+    Returns FINN's own filter metadata from a search page: every filter's
+    parameter name, its valid coded values with human labels, hit counts for
+    the current query context, range-filter parameter names (e.g.
+    price_from/price_to), and location/category hierarchies (counties contain
+    municipalities; car makes contain models).
+
+    Call this before constructing filtered searches — coded values differ per
+    vertical, and guessing parameter names fails silently. Passing the same
+    query/filters you intend to search with makes the hit counts meaningful.
+
+    Args:
+        vertical: "torget", "car", or "job".
+        query: Optional free-text search for context-sensitive counts.
+        filters: Optional JSON object string, same format as search_finn.
+    """
+    return await _client.get_filters(
+        vertical, query=query or None, filters=_filters_from(filters)
+    )
 
 
 @mcp.tool()
@@ -389,7 +423,9 @@ async def find_comparables(
     if not q:
         raise ValueError("Could not derive a model query from this ad; pass `query`.")
 
-    filters: dict[str, Any] = {}
+    # Used-cars-for-sale only: leasing ads list their monthly rate as the
+    # price and would wreck the percentile.
+    filters: dict[str, Any] = {"sales_form": "1"}
     year, mileage = props.get("year"), props.get("mileage")
     if year:
         filters["year_from"], filters["year_to"] = year - year_spread, year + year_spread
