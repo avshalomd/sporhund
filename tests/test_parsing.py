@@ -310,3 +310,52 @@ def test_ignored_filters_detection() -> None:
     assert isinstance(applied, set)
     # fixture fetched with ?q=golf only — no filter params were applied
     assert "number_of_seats_from" not in applied
+
+
+def test_car_search_docs_expose_the_verification_fields() -> None:
+    """regno/chassis/fuel/make/model/sales_form live on the search docs."""
+    html = _read("car_search.html")
+    if html is None:
+        pytest.skip("fixture car_search.html not present")
+    listings = _parse_search(html, "car").listings
+    with_regno = [l for l in listings if l.extra.get("registration_number")]
+    assert with_regno, "expected registration numbers on search results"
+    assert any(l.extra.get("fuel") for l in listings)
+    assert any(l.extra.get("make") and l.extra.get("model") for l in listings)
+    assert all(
+        l.extra.get("sales_form") in (None, "Bruktbil til salgs", "Nybil til salgs",
+                                      "Bud ønskes", "Leasing", "Auksjon")
+        or isinstance(l.extra.get("sales_form"), str)
+        for l in listings
+    ), "sales_form codes must be mapped to labels"
+
+
+def test_job_docs_expose_positions_count() -> None:
+    html = _read("job_search.html")
+    if html is None:
+        pytest.skip("fixture job_search.html not present")
+    listings = _parse_search(html, "job").listings
+    assert any(isinstance(l.extra.get("no_of_positions"), int) for l in listings)
+
+
+def test_description_unsafe_beats_the_stub_and_is_clean() -> None:
+    """Dealer ads may render no pre-wrap block; the payload's raw HTML
+    description (7 800 chars on the fixture) must be used and cleaned."""
+    html = _read("car_item_with_ld.html")
+    if html is None:
+        pytest.skip("fixture car_item_with_ld.html not present")
+    desc = _parse_listing(html, "u").get("description") or ""
+    assert len(desc) > 1000, f"expected the full dealer description, got {len(desc)}"
+    assert "<strong>" not in desc and "<br" not in desc and "&nbsp;" not in desc
+
+
+def test_fuel_matches_across_vocabularies() -> None:
+    from sporhund.cars import fuel_matches
+
+    assert fuel_matches("Elektrisk", "El")
+    assert fuel_matches("El", "Elektrisk")
+    assert fuel_matches("Bensin", "Bensin")
+    assert not fuel_matches("Bensin", "Diesel")
+    assert not fuel_matches(None, "El")
+    # different drivetrains must not match — neither label prefixes the other
+    assert not fuel_matches("Hybrid bensin", "Bensin")

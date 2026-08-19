@@ -29,7 +29,7 @@ from .finn import (
     SEARCH_URLS,
     summarize,
 )
-from .cars import brief, comparable_query, median_of, price_position
+from .cars import brief, comparable_query, fuel_matches, median_of, price_position
 from .store import Store
 from .vegvesen import (
     VegvesenClient,
@@ -109,7 +109,14 @@ async def search_finn(
         filters=_filters_from(filters),
     )
     out = result.to_dict()
-    out["price_stats"] = summarize(result.listings)
+    priced = [l for l in result.listings if l.extra.get("sales_form") != "Leasing"]
+    out["price_stats"] = summarize(priced)
+    excluded = len(result.listings) - len(priced)
+    if excluded:
+        out["price_stats"]["note"] = (
+            f"{excluded} leasing ad(s) excluded — their price is a monthly "
+            "rate, not a purchase price."
+        )
     return out
 
 
@@ -437,6 +444,15 @@ async def find_comparables(
     subject_code = str(subject.get("url", "")).rstrip("/").rsplit("/", 1)[-1]
     comps = [l for l in result.listings if l.finnkode != subject_code]
 
+    # An e-Golf priced against petrol Golfs is a wrong answer: keep same-fuel
+    # comparables when fuel is known on both sides and enough of them remain.
+    subject_fuel = props.get("fuel")
+    fuel_filtered = False
+    if subject_fuel:
+        same_fuel = [l for l in comps if fuel_matches(subject_fuel, l.extra.get("fuel"))]
+        if len(same_fuel) >= 5:
+            comps, fuel_filtered = same_fuel, True
+
     out: dict[str, Any] = {
         "subject": {
             "name": name, "price": subject.get("price"),
@@ -445,6 +461,7 @@ async def find_comparables(
         "search_used": {"query": q, "filters": filters,
                         "total_matches": result.total_matches},
         "comparables_seen": len(comps),
+        "fuel_matched": fuel_filtered,
     }
     price = subject.get("price")
     if isinstance(price, int) and comps:

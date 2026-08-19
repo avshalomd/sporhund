@@ -71,6 +71,15 @@ _RANGE_ALIASES = {
 }
 
 _FINNKODE_RE = re.compile(r"(\d{6,})")
+
+# Search docs carry sales_form as a code; item pages carry the label.
+_SALES_FORM_LABELS = {
+    "1": "Bruktbil til salgs",
+    "2": "Nybil til salgs",
+    "4": "Bud ønskes",
+    "5": "Leasing",
+    "7": "Auksjon",
+}
 _STATE_RE = re.compile(
     r'<script type="application/json" data-react-query-state>(.*?)</script>', re.S
 )
@@ -464,14 +473,23 @@ def _normalize(doc: dict[str, Any], vertical: str) -> Listing | None:
 
     extra: dict[str, Any] = {}
     if vertical == "car":
-        for key in ("year", "mileage"):
+        for key in ("year", "mileage", "fuel", "transmission", "make", "model",
+                    "model_specification", "warranty_duration", "chassis_number"):
             if doc.get(key) is not None:
                 extra[key] = doc[key]
+        if doc.get("regno"):
+            extra["registration_number"] = doc["regno"]
+        sales_form = doc.get("sales_form")
+        if sales_form is not None:
+            extra["sales_form"] = _SALES_FORM_LABELS.get(
+                str(sales_form), str(sales_form)
+            )
     elif vertical == "job":
         for src, dst in (
             ("company_name", "company"),
             ("deadline", "deadline"),
             ("job_title", "job_title"),
+            ("no_of_positions", "no_of_positions"),
         ):
             if doc.get(src) is not None:
                 extra[dst] = doc[src]
@@ -704,8 +722,14 @@ def _merge_data_props(html: str, out: dict[str, Any]) -> None:
         if labels:
             out["equipment"] = labels
 
-    if not out.get("description") and ad.get("description"):
-        out["description"] = ad["description"]
+    # The payload often carries the seller's complete text as raw HTML — the
+    # sturdiest source there is (some dealer ads render no pre-wrap block).
+    for key in ("description_unsafe", "description"):
+        raw = ad.get(key)
+        if isinstance(raw, str) and raw.strip():
+            cleaned = _clean_fragment(raw)
+            if cleaned and len(cleaned) > len(out.get("description") or ""):
+                out["description"] = cleaned
 
 
 def _find_key(node: Any, target: str) -> Any:

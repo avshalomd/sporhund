@@ -68,6 +68,18 @@ def brief(l: Listing) -> dict[str, Any]:
     """A comparable, trimmed to what matters for eyeballing the market."""
     d = l.to_dict()
     return {k: d[k] for k in
-            ("finnkode", "heading", "price", "year", "mileage", "location",
-             "seller_type", "url")
+            ("finnkode", "heading", "price", "year", "mileage", "fuel",
+             "location", "seller_type", "url")
             if d.get(k) is not None}
+
+
+def fuel_matches(a: str | None, b: str | None) -> bool:
+    """Loose fuel-label match across FINN's two vocabularies.
+
+    Search docs say "El"/"Hybrid bensin"; item pages say "Elektrisk"/…
+    Prefix match either way keeps them comparable without a code table.
+    """
+    if not a or not b:
+        return False
+    x, y = a.strip().lower(), b.strip().lower()
+    return x.startswith(y) or y.startswith(x)
