@@ -74,6 +74,20 @@ claude plugin validate .
 | `SPORHUND_DB` | Path to the local watch database | `~/.local/share/sporhund/watches.db` |
 | `VEGVESEN_API_KEY` | Statens vegvesen key, for the registry tools | unset (tools disabled) |
 
+## Version skew, and why the plugin builds from its own checkout
+
+The marketplace serves this repository at its current HEAD, so an installed
+plugin's skills are always as new as `main` — while a published PyPI release is
+only as new as the last tag. Launching the server with plain `uvx sporhund`
+therefore pairs new skills with an older server, and that has already broken
+once: `listing-view` told the agent to run `sporhund-render`, which did not exist
+in the published 0.3.0.
+
+So `plugin.json` builds the server from `${CLAUDE_PLUGIN_ROOT}` instead. The
+plugin's code and its skills are then the same checkout by construction, and
+cannot drift. Anything a skill invokes must be reachable that way — do not
+reintroduce a bare `uvx sporhund`.
+
 ## Releasing
 
 Bump the version in `pyproject.toml`, `src/sporhund/__init__.py` and both

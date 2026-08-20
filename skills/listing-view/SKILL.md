@@ -41,7 +41,7 @@ publishing a new one.
 ## Results grid
 
 ```bash
-uvx --from sporhund sporhund-render --out results.html \
+uvx --from "${CLAUDE_PLUGIN_ROOT}" sporhund-render --out results.html \
   search car "volkswagen golf" --filters '{"year_from":2019,"price_to":200000}' --limit 24
 ```
 
@@ -57,7 +57,7 @@ there or lower, since every card carries an inlined photo.
 ## Listing dossier
 
 ```bash
-uvx --from sporhund sporhund-render --out listing.html \
+uvx --from "${CLAUDE_PLUGIN_ROOT}" sporhund-render --out listing.html \
   listing 256110421 --comparables --verify
 ```
 
