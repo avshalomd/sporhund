@@ -520,8 +520,25 @@ def _primary_image(doc: dict[str, Any]) -> str | None:
 
 
 def resize_image_url(url: str, width: int = DEFAULT_IMAGE_WIDTH) -> str:
-    """Ask the CDN for a given width instead of the full-size original."""
-    return _CDN_SIZE_RE.sub(rf"\g<1>{int(width)}w\g<3>", url, count=1)
+    """Ask the CDN for a given width instead of the full-size original.
+
+    FINN's CDN serves a fixed ladder of widths and 404s on anything else, so
+    snap upward to the next size it actually has rather than 404ing the photo.
+    """
+    return _CDN_SIZE_RE.sub(rf"\g<1>{snap_image_width(width)}w\g<3>", url, count=1)
+
+
+# Probed against the CDN: any other width returns 404, not a resized image.
+CDN_IMAGE_WIDTHS = (80, 240, 320, 400, 480, 640, 960, 1280, 1600)
+
+
+def snap_image_width(width: int) -> int:
+    """Nearest supported CDN width at or above `width`, capped at the largest."""
+    wanted = int(width)
+    for supported in CDN_IMAGE_WIDTHS:
+        if supported >= wanted:
+            return supported
+    return CDN_IMAGE_WIDTHS[-1]
 
 
 def _canonical_item_url(finnkode_or_url: str) -> str:

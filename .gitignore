@@ -35,3 +35,6 @@ REPORT.md
 !.env.example
 .idea/
 .vscode/
+
+# Locally rendered listing pages — they contain sellers' photographs.
+.preview/

@@ -3,6 +3,34 @@
 Notable changes per release. Versions follow [semantic versioning](https://semver.org);
 while the major version is 0, minor bumps may change tool outputs.
 
+## Unreleased
+
+### Added
+
+- **`sporhund-render`** — renders listings as a self-contained HTML page, meant
+  to be published as an artifact. `search` gives a thumbnail grid with price,
+  spec line, location and chips for anything that changes how a price reads
+  (private seller vs dealer, auction, leasing, wanted-to-buy). `listing` gives a
+  dossier: photo gallery, spec table, the seller's own description set in a
+  serif to keep it distinct from measured data, optional registry findings
+  (`--verify`) and an optional market-position bar (`--comparables`).
+- **`listing-view` skill** and **`/sporhund:show`** — tell an agent when to
+  render a page instead of reciting listings, and to keep the published artifact
+  private, since it contains the sellers' photographs.
+
+### Fixed
+
+- FINN's image CDN serves a fixed ladder of widths (80, 240, 320, 400, 480, 640,
+  960, 1280, 1600) and returns 404 for anything else, so `view_listing_images`
+  silently lost every photo at, say, `width=800`. Requested widths now snap up
+  to the next size the CDN actually has.
+
+### Changed
+
+- Photos are still fetched on demand and never mirrored, but rendering writes
+  them into a local page, so they now touch disk. [NOTICE.md](NOTICE.md) says
+  what that means and where the private-use line sits.
+
 ## 0.3.0 — 2026-08-20
 
 ### Fixed

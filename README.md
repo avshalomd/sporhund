@@ -154,6 +154,29 @@ with `"command": "uv"` instead.
 
 Then ask Claude to search or watch FINN in plain language.
 
+## Seeing the listings
+
+Text is a poor way to judge a secondhand item. `sporhund-render` turns tool
+output into a self-contained HTML page — a thumbnail grid for a search, or a
+full dossier for one listing — which an agent can publish as an artifact:
+
+```bash
+uvx --from sporhund sporhund-render --out results.html \
+  search car "volkswagen golf" --filters '{"year_from":2019}' --limit 24
+
+uvx --from sporhund sporhund-render --out listing.html \
+  listing 256110421 --comparables --verify
+```
+
+The dossier carries the photo gallery, the spec table, the seller's own words
+set in a serif to keep them distinct from measured data, the registry findings,
+and a bar showing where the asking price sits among comparables. `--no-images`
+renders in a second when you only want the numbers.
+
+Photos are **inlined**, not linked, because a published page cannot load remote
+images — so the file contains the seller's photographs. Keep it private, and
+delete it when you are done. See [NOTICE.md](NOTICE.md).
+
 ## Updating
 
 Ask your agent to run `check_setup` — it reports the running version, which is
@@ -214,7 +237,8 @@ ever committed.**
 
 The repository doubles as its own Claude Code marketplace:
 [`.claude-plugin/`](.claude-plugin) holds the plugin and marketplace manifests,
-[`skills/`](skills) the skills an agent loads on demand, and
+[`skills/`](skills) the skills an agent loads on demand — `vegvesen-key` for
+registry setup and `listing-view` for rendering — and
 [`commands/`](commands) the slash commands. Check them with:
 
 ```bash

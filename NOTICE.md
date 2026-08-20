@@ -25,8 +25,9 @@ It **does**:
 - keep everything local — search results are returned to you and not stored,
   and watches store only listing ids you have already seen, never a mirror of
   FINN's content;
-- fetch listing photos only when explicitly asked, capped in number, into
-  memory only, never to disk (see "On listing photos" below);
+- fetch listing photos only when explicitly asked and capped in number — held
+  in memory when you are looking at them, and written to disk only inside a page
+  you asked `sporhund-render` to produce (see "On listing photos" below);
 - present a normal browser identity, because it is loading the same pages a
   person would.
 
@@ -38,7 +39,7 @@ It **does not**, and is deliberately designed never to do:
 
 ## On listing photos
 
-Two different things, with different risk profiles:
+Three different things, with different risk profiles:
 
 - **Image URLs** (in search results and `get_listing`) are just links. Nothing
   is copied, so this carries no more risk than the text already does.
@@ -49,11 +50,20 @@ Two different things, with different risk profiles:
   copyright law has a private-copying exception, so the copying itself sits
   inside the carve-out. The grey part is the automation, which is the same grey
   already accepted for text.
+- **Rendering a page** (`sporhund-render`, and the `listing-view` skill that
+  drives it) inlines those bytes into an HTML file, because a published page
+  cannot load remote images. This is the one place photos are written to disk.
+  It stays inside private use for exactly as long as the page stays private:
+  it is a viewing aid for you, the same reproduction as above with a longer
+  life, and every card links back to the original ad.
 
 Note that listing photos are usually the **seller's** copyright, not FINN's, and
-may contain personal data (faces, plates, home interiors). That is another
-reason this tool never stores, republishes, or trains on them. Storing or
-sharing fetched images would leave the private-use carve-out immediately.
+may contain personal data (faces, plates, home interiors). This tool never
+aggregates, republishes or trains on them, and a rendered page must not be
+shared, made public, or kept as a local archive — **sharing a page full of
+sellers' photographs leaves the private-use carve-out immediately**, which is
+why artifacts published from it stay private and why rendered files are
+git-ignored. Delete them when you are done.
 
 ## On the vehicle registry
 
