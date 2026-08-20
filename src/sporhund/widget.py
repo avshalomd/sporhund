@@ -132,7 +132,7 @@ font-variant-numeric:tabular-nums;letter-spacing:-.02em;white-space:nowrap}
 .sh-g{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;\
 color:var(--text-secondary);border:1px solid var(--border-strong);padding:1px 6px;border-radius:3px}
 .sh-g.w{color:var(--text-warning);border-color:var(--border-warning)}
-"""
+</style>"""
 
 _LIST_CSS = """<style>
 .sh-l{display:flex;flex-direction:column;gap:var(--gap-sm);font-family:var(--font-sans)}

@@ -130,6 +130,16 @@ def test_fit_jpeg_lands_under_its_byte_budget():
     assert Image.open(io.BytesIO(out)).size[0] <= 220
 
 
+@pytest.mark.parametrize("html", [
+    compact_widget(ROWS, {}, title="t"),
+    detail_widget({"name": "x", "url": "https://www.finn.no/x", "price": 1,
+                   "properties": {}}, None, []),
+])
+def test_every_style_block_is_closed(html):
+    """An unclosed <style> swallows the markup that follows it as CSS text."""
+    assert html.count("<style>") == html.count("</style>") == 2
+
+
 def test_median_of_nothing_is_none():
     assert median([]) is None
     assert median([1, 2, 3]) == 2
