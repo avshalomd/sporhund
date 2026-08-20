@@ -14,17 +14,6 @@ while the major version is 0, minor bumps may change tool outputs.
   is copied to disk; the view follows the host's theme and hands link clicks back
   to the host with `ui/open-link`. Clients without the extension get the same
   JSON as before.
-- **`sporhund-widget`** and the **`listing-widget` skill** — listings as a
-  widget inside the chat: a compact list of rows for several, a detailed card
-  for one. The widget sandbox blocks remote image hosts, so thumbnails are
-  inlined as base64 and pass through the agent's context; photos are therefore
-  the entire cost, and the design follows the measurement (80w ~1.1k tokens,
-  240w ~5.9k). Lists default to 80w, the command prints its own token estimate,
-  and `--only` re-uses a search you already ran instead of fetching each listing.
-  Photos are re-encoded with Pillow to an exact byte budget rather than picked
-  off FINN's CDN width ladder, and every one is kept small on purpose: a base64
-  blob has to be carried intact into the widget call, and a ~15 KB one arrives
-  corrupted, so a detail card shows four small photos rather than one large one.
 - **`sporhund-render`** — renders listings as a self-contained HTML page, meant
   to be published as an artifact. `search` gives a thumbnail grid with price,
   spec line, location and chips for anything that changes how a price reads

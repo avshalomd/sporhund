@@ -38,3 +38,6 @@ REPORT.md
 
 # Locally rendered listing pages — they contain sellers' photographs.
 .preview/
+
+# Shelved work kept on disk but out of the repo — see TODO.md.
+archive/

@@ -17,7 +17,6 @@ classifiers = [
 dependencies = [
     "mcp>=1.2.0",
     "httpx>=0.27",
-    "pillow>=12.3.0",
 ]
 
 [project.urls]
@@ -28,7 +27,6 @@ Issues = "https://github.com/avshalomd/sporhund/issues"
 [project.scripts]
 sporhund = "sporhund.server:main"
 sporhund-render = "sporhund.render:main"
-sporhund-widget = "sporhund.widget:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -36,6 +34,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sporhund"]
+
+# Keep collection inside tests/ so shelved work under archive/ is ignored.
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [dependency-groups]
 dev = [

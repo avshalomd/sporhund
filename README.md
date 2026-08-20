@@ -167,22 +167,6 @@ is copied to disk, and the view follows the host's light or dark theme.
 Clients that don't negotiate the extension get exactly the same JSON as before;
 the views are additive metadata they ignore.
 
-### As a widget in the chat
-
-`sporhund-widget` prints a fragment for an agent to show inline — a compact list
-when there are several listings, a detailed card when there is one:
-
-```bash
-uvx --from sporhund sporhund-widget list car "tesla model 3" --limit 6
-uvx --from sporhund sporhund-widget one 256110421
-```
-
-The widget sandbox blocks remote images, so thumbnails are inlined as base64 and
-pass through the agent's context. That makes photos essentially the whole cost —
-**80w is ~1.1k tokens, 240w is ~5.9k** — so lists use 80w and only a single
-listing's hero image spends more. A six-row widget is around 7k tokens; the
-command prints its own estimate, and `--no-images` costs almost nothing.
-
 ### As a file or artifact
 
 Text is a poor way to judge a secondhand item. `sporhund-render` turns tool
@@ -267,8 +251,7 @@ ever committed.**
 The repository doubles as its own Claude Code marketplace:
 [`.claude-plugin/`](.claude-plugin) holds the plugin and marketplace manifests,
 [`skills/`](skills) the skills an agent loads on demand — `vegvesen-key` for
-registry setup, `listing-view` for pages and `listing-widget` for in-chat
-widgets — and
+registry setup and `listing-view` for pages — and
 [`commands/`](commands) the slash commands. Check them with:
 
 ```bash
