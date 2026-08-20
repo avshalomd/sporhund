@@ -3,7 +3,7 @@
 Notable changes per release. Versions follow [semantic versioning](https://semver.org);
 while the major version is 0, minor bumps may change tool outputs.
 
-## Unreleased
+## 0.4.0 — 2026-08-20
 
 ### Added
 
@@ -23,9 +23,12 @@ while the major version is 0, minor bumps may change tool outputs.
 
 ### Changed
 
-- Photos are still fetched on demand and never mirrored, but rendering writes
-  them into a local page, so they now touch disk. [NOTICE.md](NOTICE.md) says
-  what that means and where the private-use line sits.
+- The plugin builds its MCP server from its own checkout rather than from PyPI.
+  The marketplace serves this repository at HEAD, so a plugin's skills are always
+  as new as `main` while PyPI is only as new as the last tag — pairing the two
+  had already shipped a skill invoking a command absent from the release.
+- In-chat widgets and the page renderer were built and then shelved; see
+  [TODO.md](TODO.md) for why, and what replaces them.
 
 ## 0.3.0 — 2026-08-20
 
