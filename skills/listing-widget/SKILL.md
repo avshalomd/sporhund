@@ -43,29 +43,31 @@ uvx --from sporhund sporhund-widget list car "tesla model 3" \
 The median it reports is over the whole result set, not just the rows shown —
 a median of three hand-picked listings would be meaningless.
 
-**One listing — detailed.** Photo, specification grid, and an excerpt of the
-seller's description.
+**One listing — detailed.** Four photos, specification grid, and an excerpt of
+the seller's description, for about 3.4k tokens.
 
 ```bash
 uvx --from sporhund sporhund-widget one 256110421
 ```
 
-That costs about 4.5k tokens and shows a small, crisp photo. When the picture is
-the point — condition, damage, what's included — ask for a real one:
+Four small photos rather than one big one is deliberate, and the constraint is
+worth knowing: a photo is a base64 string that has to be carried intact into the
+`show_widget` call, and long blobs do not survive that — a ~15 KB one arrives
+corrupted and renders as a broken image. Roughly 3 KB is the size that works, so
+**never raise `--photo-bytes` looking for a better picture.** More photos, yes;
+bigger ones, no.
 
-```bash
-uvx --from sporhund sporhund-widget one 256110421 --hero 240 --budget 8000
-```
+When the photographs themselves are the question — paint condition, damage,
+what's included — the widget is the wrong tool. Render a page instead and
+publish it as an artifact (see the `listing-view` skill): it reads the images
+from disk, so they cost no tokens at all and can be full size.
 
 ## Token budget
 
 Photos are essentially the entire cost. Measured against FINN's CDN:
 
-| Thumbnail width | Per photo | Note |
-| --- | --- | --- |
-| 80 (list default) | ~1.1k tokens | six of these ≈ one 240 |
-| 240 (hero default) | ~5.9k tokens | only worth it for a single hero |
-| 320 | ~10.5k tokens | don't |
+Each photo is re-encoded to about 2 KB, which is ~700 tokens once base64'd.
+A six-row list costs roughly 7k tokens and a detail card about 3.4k.
 
 So a six-listing widget costs roughly **7k tokens**, and a detailed listing
 about **4.5k** (or 8k with `--hero 240`).
@@ -79,9 +81,9 @@ recovering it costs more than the photos were worth.
 Bring it down further when you need to:
 
 - `--limit 4` — fewer rows.
+- `--photos 2` — fewer photos on a detail card.
 - `--no-images` — near-free; right when the user is comparing numbers, not
   looking at cars.
-- Never raise `--width` above 80 for a list.
 
 ## When not to render one
 
