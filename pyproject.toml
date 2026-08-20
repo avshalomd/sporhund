@@ -27,6 +27,7 @@ Issues = "https://github.com/avshalomd/sporhund/issues"
 [project.scripts]
 sporhund = "sporhund.server:main"
 sporhund-render = "sporhund.render:main"
+sporhund-widget = "sporhund.widget:main"
 
 [build-system]
 requires = ["hatchling"]
