@@ -7,6 +7,13 @@ while the major version is 0, minor bumps may change tool outputs.
 
 ### Added
 
+- **MCP Apps views** — `search_finn` and `get_listing` now carry `ui://`
+  resources, so in Claude Desktop, claude.ai and VS Code the results grid and
+  the listing dossier render inside the conversation instead of coming back as
+  JSON. Photos load from FINN's CDN, declared in the resource's CSP, so nothing
+  is copied to disk; the view follows the host's theme and hands link clicks back
+  to the host with `ui/open-link`. Clients without the extension get the same
+  JSON as before.
 - **`sporhund-render`** — renders listings as a self-contained HTML page, meant
   to be published as an artifact. `search` gives a thumbnail grid with price,
   spec line, location and chips for anything that changes how a price reads

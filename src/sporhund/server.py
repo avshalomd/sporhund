@@ -30,6 +30,7 @@ from .finn import (
     SEARCH_URLS,
     summarize,
 )
+from .app_ui import FONT_HOSTS, IMAGE_HOST
 from .cars import (
     MIN_COMPARABLES,
     brief,
@@ -49,8 +50,45 @@ from .vegvesen import (
     summarize_vehicle,
 )
 
+# MCP Apps (`ui://` views rendered in the conversation) is an optional extension:
+# where the client supports it, search results and listings draw themselves in
+# the chat; where it doesn't, the same tools return the same JSON as before.
+try:
+    from mcp.server.apps import Apps, ResourceCsp
+
+    from .app_ui import LISTING_URI, RESULTS_URI, listing_view, results_view
+
+    _apps: Apps | None = Apps()
+    _view_csp = ResourceCsp(resource_domains=[IMAGE_HOST, *FONT_HOSTS])
+    _apps.add_html_resource(
+        RESULTS_URI, results_view(), title="FINN search results",
+        description="A grid of FINN listings with thumbnails and prices.",
+        csp=_view_csp,
+    )
+    _apps.add_html_resource(
+        LISTING_URI, listing_view(), title="FINN listing",
+        description="One FINN listing: photo gallery, price and specification.",
+        csp=_view_csp,
+    )
+except ModuleNotFoundError:  # older mcp packages have no Apps extension
+    _apps = None
+
 # Advertised to clients in serverInfo, so a connected agent can tell versions apart.
-mcp = _Server("sporhund", version=__version__)
+mcp = _Server("sporhund", version=__version__, **({"extensions": [_apps]} if _apps else {}))
+
+
+def _ui_tool(resource_uri: str, **kwargs: Any):
+    """Register a tool that carries a view, degrading to a plain tool without one.
+
+    The `_meta` is stamped through `mcp.tool` rather than `Apps.tool` on purpose:
+    extensions are consumed when the server is constructed, which happens above
+    these decorators, so a tool registered on the extension here would never
+    reach the tool list. The extension still owns the `ui://` resources and the
+    capability advertisement.
+    """
+    if _apps is None:
+        return mcp.tool(**kwargs)
+    return mcp.tool(meta={"ui": {"resourceUri": resource_uri}}, **kwargs)
 
 Vertical = Literal["torget", "car", "job"]
 _client = FinnClient()
@@ -78,7 +116,7 @@ def _filters_from(raw: str | None) -> dict[str, Any]:
     return parsed
 
 
-@mcp.tool()
+@_ui_tool(RESULTS_URI)
 async def search_finn(
     vertical: Vertical,
     query: str = "",
@@ -160,7 +198,7 @@ async def get_search_filters(
     )
 
 
-@mcp.tool()
+@_ui_tool(LISTING_URI)
 async def get_listing(finnkode_or_url: str) -> dict[str, Any]:
     """Fetch the full detail of a single FINN listing.
 

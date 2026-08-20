@@ -156,6 +156,19 @@ Then ask Claude to search or watch FINN in plain language.
 
 ## Seeing the listings
 
+### In the conversation (Claude Desktop, claude.ai, VS Code)
+
+`search_finn` and `get_listing` ship [MCP Apps](https://modelcontextprotocol.io/extensions/apps/overview)
+views: where the client supports the extension, the results grid and the listing
+dossier render *inside the chat* — thumbnails, photo gallery, spec table — and
+photos load straight from FINN's CDN, which the view declares in its CSP. Nothing
+is copied to disk, and the view follows the host's light or dark theme.
+
+Clients that don't negotiate the extension get exactly the same JSON as before;
+the views are additive metadata they ignore.
+
+### As a file or artifact
+
 Text is a poor way to judge a secondhand item. `sporhund-render` turns tool
 output into a self-contained HTML page — a thumbnail grid for a search, or a
 full dossier for one listing — which an agent can publish as an artifact:

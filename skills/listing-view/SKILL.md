@@ -14,6 +14,18 @@ as an artifact and the user gets something they can actually look at.
 inlining, both colour themes, responsive layout, escaping and the footer. Your
 job is to choose the view, run it, and publish it.
 
+## First: has the client already drawn it?
+
+Sporhund ships MCP Apps views. In a client that supports them — Claude Desktop,
+claude.ai, VS Code — `search_finn` and `get_listing` render themselves in the
+conversation automatically, with live photos from FINN's CDN. **Nothing for you
+to do: don't render a second copy.** Just comment on what the user is looking at.
+
+Reach for the renderer below when the client showed no view (you will see only
+JSON come back), or when the user wants something the inline view does not do:
+a page they can keep, a registry check and market position side by side, or a
+grid put together from several searches.
+
 ## Which view
 
 | Situation | View |
