@@ -1,8 +1,18 @@
 # TODO
 
 Work that is decided but not built, and decisions worth not re-litigating.
-Shipped items live in [CHANGELOG.md](CHANGELOG.md); the longer-range vertical
-plans are in the README's *Roadmap*.
+Shipped items live in [CHANGELOG.md](CHANGELOG.md).
+
+## Verticals and features
+
+- [ ] Real estate (Eiendom), buy and rent — needs a React-Router stream parser.
+- [ ] "Draft first message" / negotiation prep, as MCP prompts.
+- [ ] Optional desktop notifications for `check_watch`.
+- [x] Car ads cross-checked against Statens vegvesen's vehicle registry.
+- [x] Deal scoring: `find_comparables` positions a car against its market.
+
+Anything beyond personal use goes through the sanctioned route first (a FINN
+partner API, or written consent from Vend). See [NOTICE.md](NOTICE.md).
 
 ## Next: a shortlist report, on demand
 
