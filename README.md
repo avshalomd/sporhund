@@ -31,6 +31,21 @@ Restart, and that's it — no clone, no Python setup. You'll need
 
 Ask your agent to run `/sporhund:setup` at any point to see what's switched on.
 
+<details>
+<summary>Other MCP clients (Claude Desktop, Codex, …)</summary>
+
+The plugin is Claude Code only. Elsewhere, point your client at the package —
+you get the tools, but not the skills or slash commands:
+
+```bash
+uvx sporhund
+```
+
+For Codex: `codex mcp add sporhund -- uvx sporhund`. For Claude Desktop, add
+`{"command": "uvx", "args": ["sporhund"]}` under `mcpServers`.
+
+</details>
+
 ### Optional: Norwegian vehicle registry
 
 Two extras — checking a car ad against the state's own records, and looking up a
@@ -53,8 +68,6 @@ Talk normally. Some things worth asking for:
 - *"Show me the photos"* — your agent looks at them and tells you what it sees.
 - *"Watch this search and tell me what's new"* — saved searches that report only
   listings you haven't seen before.
-- *"Make me a page for these three"* — renders a shortlist as a private page you
-  can keep.
 
 Covers **torget** (secondhand goods), **cars** and **jobs**. Property is not
 supported yet — see [TODO.md](TODO.md).

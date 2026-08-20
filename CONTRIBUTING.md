@@ -12,7 +12,6 @@ The repository is its own Claude Code marketplace as well as a Python package:
 | [`src/sporhund/finn.py`](src/sporhund/finn.py) | The only module that touches finn.no: fetching, pacing, parsing, normalising |
 | [`src/sporhund/server.py`](src/sporhund/server.py) | The MCP tools. No HTTP or parsing of its own |
 | [`src/sporhund/vegvesen.py`](src/sporhund/vegvesen.py) | Statens vegvesen lookups and ad-vs-registry comparison |
-| [`src/sporhund/render.py`](src/sporhund/render.py) | Renders listings as a self-contained page |
 | [`.claude-plugin/`](.claude-plugin) | Plugin and marketplace manifests |
 | [`skills/`](skills), [`commands/`](commands) | What an agent loads on demand |
 
@@ -53,8 +52,8 @@ claude plugin validate .
   they are comparable across verticals.
 - **Images**: search results carry the primary thumbnail URL and `get_listing`
   returns every photo URL — links only, nothing downloaded. Only
-  `view_listing_images` and `sporhund-render` fetch bytes, capped and resized
-  through FINN's own CDN. That CDN serves a fixed ladder of widths and 404s on
+  `view_listing_images` fetches bytes, capped and resized through FINN's own
+  CDN, into memory only. That CDN serves a fixed ladder of widths and 404s on
   anything else, so requested widths snap upward. Non-finncdn URLs are refused.
 - **A bare finnkode** resolves through `finn.no/<code>`, which redirects to
   whichever vertical owns the ad.
@@ -79,14 +78,14 @@ claude plugin validate .
 The marketplace serves this repository at its current HEAD, so an installed
 plugin's skills are always as new as `main` — while a published PyPI release is
 only as new as the last tag. Launching the server with plain `uvx sporhund`
-therefore pairs new skills with an older server, and that has already broken
-once: `listing-view` told the agent to run `sporhund-render`, which did not exist
-in the published 0.3.0.
+therefore pairs new skills with an older server. That has already broken once: a
+skill told the agent to run a command that did not exist in the published
+release.
 
 So `plugin.json` builds the server from `${CLAUDE_PLUGIN_ROOT}` instead. The
-plugin's code and its skills are then the same checkout by construction, and
-cannot drift. Anything a skill invokes must be reachable that way — do not
-reintroduce a bare `uvx sporhund`.
+plugin's code and its skills are then the same checkout by construction and
+cannot drift, and plugin users get new tools without waiting for a release. Do
+not reintroduce a bare `uvx sporhund` — it reopens exactly this gap.
 
 ## Releasing
 

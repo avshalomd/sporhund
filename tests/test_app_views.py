@@ -86,3 +86,17 @@ async def test_the_ui_bound_tools_are_still_listed_as_tools():
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+def test_every_colour_token_is_defined_on_bare_root():
+    """A token defined only under a media query renders unreadable in the
+    default 'system' theme — the classic broken-view bug."""
+    import re
+
+    from sporhund.app_ui import stylesheet
+
+    css = stylesheet()
+    bare = css.split("@media", 1)[0]
+    declared = set(re.findall(r"(--[a-z0-9-]+):", bare))
+    used = set(re.findall(r"var\((--[a-z0-9-]+)\)", css))
+    assert used <= declared, f"only defined in a theme block: {sorted(used - declared)}"

@@ -14,17 +14,6 @@ while the major version is 0, minor bumps may change tool outputs.
   is copied to disk; the view follows the host's theme and hands link clicks back
   to the host with `ui/open-link`. Clients without the extension get the same
   JSON as before.
-- **`sporhund-render`** — renders listings as a self-contained HTML page, meant
-  to be published as an artifact. `search` gives a thumbnail grid with price,
-  spec line, location and chips for anything that changes how a price reads
-  (private seller vs dealer, auction, leasing, wanted-to-buy). `listing` gives a
-  dossier: photo gallery, spec table, the seller's own description set in a
-  serif to keep it distinct from measured data, optional registry findings
-  (`--verify`) and an optional market-position bar (`--comparables`).
-- **`listing-view` skill** and **`/sporhund:show`** — tell an agent when to
-  render a page instead of reciting listings, and to keep the published artifact
-  private, since it contains the sellers' photographs.
-
 ### Fixed
 
 - FINN's image CDN serves a fixed ladder of widths (80, 240, 320, 400, 480, 640,

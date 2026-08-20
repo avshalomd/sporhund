@@ -20,10 +20,9 @@ Once a user has narrowed a search down to a few real candidates, they should be
 able to ask for a **report** — one artifact covering the shortlist, generated on
 request rather than automatically.
 
-The pieces already exist; what is missing is the thing that turns them into
-advice:
+The data already exists; what is missing is both the page and the thing that
+turns facts into advice:
 
-- `sporhund-render` produces the page,
 - `find_comparables` gives each car's market position,
 - `verify_car` gives the registry findings,
 - and search results now carry registration numbers, so a whole shortlist can be
@@ -41,6 +40,13 @@ questions this car raises, and a plain verdict on where it ranks.
 reads the images off disk and they never pass through the agent's context. Full-
 size photos cost nothing, the ceiling is 16 MB, and there is no hand-copied
 base64 to corrupt. See *Shelved* below.
+
+An earlier renderer (`sporhund-render`) is in `archive/render.py` — it built a
+self-contained page with an inlined gallery, a spec table and a price-position
+bar. Worth reading before rewriting, but it was a page generator, not the
+buyer's brief described above, and it shipped a skill referencing a command that
+did not exist in the published release. Whatever replaces it must be reachable
+from whatever the plugin actually installs.
 
 **On sharing.** Artifacts are private until the user shares them from the page's
 share menu, which is the right default here — but note the tension with

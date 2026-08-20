@@ -359,3 +359,23 @@ def test_fuel_matches_across_vocabularies() -> None:
     assert not fuel_matches(None, "El")
     # different drivetrains must not match — neither label prefixes the other
     assert not fuel_matches("Hybrid bensin", "Bensin")
+
+
+# -- image CDN sizing ----------------------------------------------------------
+
+
+@pytest.mark.parametrize("wanted,expected", [(1, 80), (500, 640), (960, 960), (5000, 1600)])
+def test_image_widths_snap_to_the_ladder_the_cdn_actually_serves(wanted, expected):
+    """FINN's CDN 404s on any width outside its ladder, which used to lose the
+    photo entirely — view_listing_images(width=800) returned nothing at all."""
+    from sporhund.finn import snap_image_width
+
+    assert snap_image_width(wanted) == expected
+
+
+def test_resize_rewrites_only_the_size_segment():
+    from sporhund.finn import CDN_IMAGE_WIDTHS, resize_image_url
+
+    url = "https://images.finncdn.no/dynamic/480w/item/123/abc"
+    assert resize_image_url(url, 1000) == "https://images.finncdn.no/dynamic/1280w/item/123/abc"
+    assert all(isinstance(w, int) for w in CDN_IMAGE_WIDTHS)
