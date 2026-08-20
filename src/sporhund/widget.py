@@ -34,16 +34,16 @@ from .finn import FinnClient
 # 80w is too small to look at and 240w is too many bytes to emit in one piece.
 # So fetch a good source and re-encode to an exact byte budget instead.
 SOURCE_WIDTH = 640
-# Every photo is a base64 string that has to be carried intact into the widget
-# call. Short ones survive that; a single ~15 KB blob does not, and arrives
-# corrupted. So a detail card shows *several small* photos rather than one big
-# one — same bytes, more of the car, and each blob stays in the size range that
-# actually works.
-THUMB_BYTES = 2_000     # a list row's thumbnail
-PHOTO_BYTES = 2_000     # each photo on a detail card
-THUMB_SIDE = 220
-PHOTO_SIDE = 240
-MAX_PHOTOS = 4
+# The rule that governs every number below: a photo must be *encoded at the size
+# it is displayed at*. `fit_jpeg` meets a byte budget by dropping quality and
+# then shrinking, so an over-tight budget silently returns a 97px image that the
+# layout then stretches to 190px — which looks like corruption but is just an
+# upscale. Pick the tile size first, then a budget generous enough to keep it.
+THUMB_BYTES = 2_000     # a list row's thumbnail, shown at 104px
+THUMB_SIDE = 120
+PHOTO_BYTES = 1_200     # one tile in a detail card's contact sheet, shown at ~78px
+PHOTO_SIDE = 80
+MAX_PHOTOS = 12         # i.e. all of them; FINN listings rarely carry more
 DEFAULT_LIMIT = 6
 # base64 chars / 4 ~= tokens. The fragment has to survive one tool result in
 # one piece: an oversized print is truncated to a file, and reading that file
@@ -51,7 +51,7 @@ DEFAULT_LIMIT = 6
 # enforced by downgrading images, not by hoping.
 # Measured, not guessed: a ~24 KB tool result survives whole, a ~31 KB one is
 # truncated to a file. 5 600 tokens is ~22.4 KB, which leaves margin.
-DEFAULT_BUDGET = 5_600
+DEFAULT_BUDGET = 5_800
 
 NB = " "
 
@@ -156,8 +156,8 @@ padding-top:var(--gap-xs)}
 _DETAIL_CSS = """<style>
 .sh-one{font-family:var(--font-sans)}
 .sh-one .sh-r{grid-template-columns:1fr;gap:var(--gap-sm)}
-.sh-gal{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px}
-.sh-gal img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px;display:block;\
+.sh-gal{display:grid;grid-template-columns:repeat(auto-fit,minmax(76px,1fr));gap:5px}
+.sh-gal img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:4px;display:block;\
 background:var(--surface-0)}
 .sh-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .sh-tags{display:flex;gap:5px;flex-wrap:wrap}
@@ -401,9 +401,10 @@ async def _within_budget(args: argparse.Namespace) -> tuple[str, str]:
         steps = [("thumb_bytes", 1_100, "thumbnails compressed harder"),
                  ("thumb_bytes", 700, "thumbnails compressed hardest")]
     else:
-        steps = [("photos", 3, "one fewer photo"),
-                 ("photos", 2, "two fewer photos"),
-                 ("photo_bytes", 1_300, "photos compressed harder")]
+        steps = [("photos", 11, "showing 11 photos"),
+                 ("photos", 10, "showing 10 photos"),
+                 ("photos", 8, "showing 8 photos"),
+                 ("photos", 6, "showing 6 photos")]
     for attribute, value, said in steps:
         setattr(args, attribute, value)
         fragment = await build(args)

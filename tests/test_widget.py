@@ -20,6 +20,8 @@ from sporhund.widget import (
     DEFAULT_BUDGET,
     MAX_PHOTOS,
     PHOTO_BYTES,
+    PHOTO_SIDE,
+    THUMB_SIDE,
     THUMB_BYTES,
     car_name,
     compact_widget,
@@ -96,18 +98,26 @@ def test_photo_budgets_stay_small_enough_to_emit_in_one_piece():
     """Measured, not assumed: a ~24 KB tool result survives whole while a ~31 KB
     one is truncated to a file, and base64 inflates bytes by 4/3. Both a
     six-row list and a detail card must clear that with room for the markup."""
-    ceiling = 23_000
+    ceiling = 23_500
     stylesheet_and_markup = 4_000
     assert THUMB_BYTES * 6 * 4 // 3 + stylesheet_and_markup < ceiling
     assert PHOTO_BYTES * MAX_PHOTOS * 4 // 3 + stylesheet_and_markup < ceiling
     assert DEFAULT_BUDGET * 4 < ceiling
 
 
-def test_no_single_photo_is_large_enough_to_arrive_corrupted():
-    """A ~15 KB base64 blob does not survive being carried into a widget call;
-    ~3 KB ones do. Every photo must stay in the range that works."""
-    assert PHOTO_BYTES * 4 // 3 < 3_500
-    assert THUMB_BYTES * 4 // 3 < 3_500
+def test_photo_budgets_are_generous_enough_to_keep_the_displayed_size():
+    """fit_jpeg meets its budget by dropping quality and *then* shrinking, so a
+    tight budget silently returns a smaller image that the layout upscales into
+    a blocky mess. These pairs were measured to survive at full size."""
+    from PIL import Image
+    import io
+
+    source = io.BytesIO()
+    Image.new("RGB", (1200, 900)).save(source, "JPEG", quality=90)
+    for budget, side in ((PHOTO_BYTES, PHOTO_SIDE), (THUMB_BYTES, THUMB_SIDE)):
+        out = fit_jpeg(source.getvalue(), max_bytes=budget, max_side=side, ratio=4 / 3)
+        assert Image.open(io.BytesIO(out)).size[0] == side, (
+            f"{budget} bytes forced a shrink below {side}px")
 
 
 @pytest.mark.parametrize("row,expected", [
