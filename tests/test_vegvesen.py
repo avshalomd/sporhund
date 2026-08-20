@@ -132,3 +132,21 @@ def test_deregistered_is_informational_not_alarming() -> None:
     )
     assert len(f) == 1 and f[0]["severity"] == "info"
     assert "test-driven" in f[0]["detail"]
+
+
+def test_unknown_vehicle_is_reported_as_not_found(monkeypatch):
+    """The registry answers an unknown plate with 204 No Content, not 404."""
+    import asyncio
+
+    import httpx
+
+    from sporhund.vegvesen import VegvesenClient, VegvesenError
+
+    monkeypatch.setenv("VEGVESEN_API_KEY", "x")
+
+    async def fake_get(self, params, key):
+        return httpx.Response(204, request=httpx.Request("GET", "https://x"))
+
+    monkeypatch.setattr(VegvesenClient, "_get", fake_get)
+    with pytest.raises(VegvesenError, match="No vehicle found"):
+        asyncio.run(VegvesenClient().lookup(plate="AA00000"))

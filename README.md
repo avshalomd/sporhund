@@ -32,6 +32,7 @@ The server exposes these tools to your agent:
 | `create_watch` | Save a search under a name (stored locally). |
 | `check_watch` | Re-run a saved search and return **only listings you haven't seen before** — a smarter, agent-driven version of *lagrede søk*. |
 | `list_watches` / `delete_watch` | Manage your saved watches. |
+| `check_setup` | Report which tools are live right now, whether the vehicle-registry key is configured and where it came from, and — with `verify_key=true` — whether Statens vegvesen actually accepts it. Reports locations and warnings only; never reads or returns the key itself. |
 
 Because your agent is Claude, the *intelligence* lives in the conversation: the
 server gives Claude clean FINN data, and Claude does the reasoning — "is this car
@@ -81,6 +82,12 @@ cp .env.example .env && chmod 600 .env   # then edit VEGVESEN_API_KEY=
 personally responsible for its use, and a shared key gets withdrawn. Everything
 still works without one; only the registry tools switch off.
 
+Rather than doing this by hand, run `/sporhund:setup` (or just ask your agent to
+set up the vehicle registry). The bundled `vegvesen-key` skill walks through
+ordering, installing and verifying the key, and diagnoses a rejected one. It
+tells you where to paste the key — it never asks you to paste it into the chat.
+At any point, `check_setup` tells you what is switched on.
+
 Registry data is © Statens vegvesen (Kjøretøyregisteret), licensed
 [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/). It contains no owner
 information.
@@ -114,9 +121,18 @@ codex mcp add sporhund -- uvx sporhund
 
 ### Claude Code
 
-A project-scoped [`.mcp.json`](.mcp.json) is committed, so opening this
-directory in Claude Code offers the server automatically — approve `sporhund`
-once when prompted and the tools appear.
+Install it as a plugin, which brings the MCP server, the `/sporhund:setup`
+command and the `vegvesen-key` skill in one step:
+
+```bash
+claude plugin marketplace add avshalomd/sporhund
+```
+
+Then `claude plugin install sporhund@sporhund`.
+
+Alternatively, a project-scoped [`.mcp.json`](.mcp.json) is committed, so opening
+this directory in Claude Code offers the bare server automatically — approve
+`sporhund` once when prompted and the tools appear.
 
 ### Claude Desktop / other MCP clients
 
@@ -173,6 +189,15 @@ uv run pytest                      # parser tests run against those pages
 
 Fixtures and the local database are git-ignored on purpose: **no FINN data is
 ever committed.**
+
+The repository doubles as its own Claude Code marketplace:
+[`.claude-plugin/`](.claude-plugin) holds the plugin and marketplace manifests,
+[`skills/`](skills) the skills an agent loads on demand, and
+[`commands/`](commands) the slash commands. Check them with:
+
+```bash
+claude plugin validate .
+```
 
 ## Configuration
 

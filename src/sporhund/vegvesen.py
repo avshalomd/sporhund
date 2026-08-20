@@ -32,6 +32,8 @@ ATTRIBUTION = "Data from Statens vegvesen (Kjøretøyregisteret), licensed CC-BY
 _MIN_INTERVAL_S = 0.5
 # Norwegian plates: two letters + five digits; personal plates vary, so stay loose.
 _PLATE_RE = re.compile(r"^[A-ZÆØÅ]{2}\s?\d{4,5}$", re.I)
+# Well-formed but unissued: lets us test a key without touching a real vehicle.
+_PROBE_PLATE = "AA00000"
 
 
 class VegvesenError(RuntimeError):
@@ -81,13 +83,35 @@ class VegvesenClient:
         if vin:
             params["understellsnummer"] = vin.strip().upper()
 
+        resp = await self._get(params, key)
+
+        if resp.status_code in (401, 403):
+            raise VegvesenError(
+                "Statens vegvesen rejected the API key (HTTP "
+                f"{resp.status_code}). Check that it is active on Din side and "
+                "copied exactly."
+            )
+        # The registry answers an unknown vehicle with 204 No Content, not 404.
+        if resp.status_code in (204, 404) or not resp.content:
+            raise VegvesenError("No vehicle found for that registration/chassis number.")
+        if resp.status_code == 429:
+            raise VegvesenError("Rate limit reached (50 000 lookups per key per day).")
+        if resp.status_code != 200:
+            raise VegvesenError(f"Registry returned HTTP {resp.status_code}.")
+        try:
+            return resp.json()
+        except ValueError as exc:
+            raise VegvesenError(f"Registry returned unreadable data: {exc}") from exc
+
+    async def _get(self, params: dict[str, str], key: str) -> httpx.Response:
+        """One paced, authenticated GET. Callers own the status-code handling."""
         async with self._lock:
             wait = _MIN_INTERVAL_S - (time.monotonic() - self._last_request)
             if wait > 0:
                 await asyncio.sleep(wait)
             try:
                 async with httpx.AsyncClient(timeout=20.0) as client:
-                    resp = await client.get(
+                    return await client.get(
                         ENDPOINT,
                         params=params,
                         headers={
@@ -98,22 +122,47 @@ class VegvesenClient:
             finally:
                 self._last_request = time.monotonic()
 
-        if resp.status_code in (401, 403):
-            raise VegvesenError(
-                "Statens vegvesen rejected the API key (HTTP "
-                f"{resp.status_code}). Check that it is active on Din side and "
-                "copied exactly."
-            )
-        if resp.status_code == 404:
-            raise VegvesenError("No vehicle found for that registration/chassis number.")
-        if resp.status_code == 429:
-            raise VegvesenError("Rate limit reached (50 000 lookups per key per day).")
-        if resp.status_code != 200:
-            raise VegvesenError(f"Registry returned HTTP {resp.status_code}.")
+    async def verify_key(self) -> dict[str, Any]:
+        """Ask the registry whether the configured key is actually accepted.
+
+        Probes a well-formed plate that no vehicle uses, so nothing real is
+        looked up: a live key answers "no such vehicle" (204), a bad one 401/403.
+        Returns a verdict instead of raising, because this is setup help.
+        """
+        key = get_secret(API_KEY_NAME)
+        if not key:
+            return {"ok": False, "reason": "no_key", "detail": str(MissingApiKey())}
         try:
-            return resp.json()
-        except ValueError as exc:
-            raise VegvesenError(f"Registry returned unreadable data: {exc}") from exc
+            resp = await self._get({"kjennemerke": _PROBE_PLATE}, key)
+        except httpx.HTTPError as exc:
+            return {
+                "ok": False,
+                "reason": "network",
+                "detail": f"Could not reach Statens vegvesen: {exc}",
+            }
+        if resp.status_code in (200, 204, 404):
+            return {"ok": True, "detail": "Statens vegvesen accepted the key."}
+        if resp.status_code in (401, 403):
+            return {
+                "ok": False,
+                "reason": "rejected",
+                "detail": (
+                    f"Statens vegvesen rejected the key (HTTP {resp.status_code}). "
+                    "Check on Din side that it is active, and that it was copied "
+                    "whole with no stray spaces or quotes."
+                ),
+            }
+        if resp.status_code == 429:
+            return {
+                "ok": True,
+                "detail": "Key works, but today's 50 000-lookup quota is used up.",
+            }
+        return {
+            "ok": False,
+            "reason": "unexpected",
+            "detail": f"Registry returned HTTP {resp.status_code}.",
+        }
+
 
 
 # -- normalising the registry's deeply nested schema ---------------------------

@@ -20,6 +20,7 @@ except ModuleNotFoundError:  # older packages ship it as FastMCP
     from mcp.server.fastmcp import FastMCP as _Server, Image
 
 from . import __version__
+from .config import describe_secret, secret_locations
 from .finn import (
     DEFAULT_IMAGE_WIDTH,
     MAX_IMAGES_PER_CALL,
@@ -32,6 +33,8 @@ from .finn import (
 from .cars import brief, comparable_query, fuel_matches, median_of, price_position
 from .store import Store
 from .vegvesen import (
+    API_KEY_NAME,
+    ORDER_KEY_URL,
     VegvesenClient,
     compare_claims,
     looks_like_plate,
@@ -313,6 +316,73 @@ async def delete_watch(name: str) -> dict[str, Any]:
     if not ok:
         raise ValueError(f"No watch named {name!r}.")
     return {"status": "deleted", "name": name}
+
+
+@mcp.tool()
+async def check_setup(verify_key: bool = False) -> dict[str, Any]:
+    """Report what this connector can currently do, and how to switch on the rest.
+
+    Searching, listings, images and watches always work. The two vehicle-registry
+    tools (`lookup_vehicle`, `verify_car`) need a Statens vegvesen API key that is
+    personal to the user. This says whether one is configured, which location it
+    came from, and exactly what to do when it isn't — it never reads, returns or
+    logs the key itself, and the user must always paste it into the file
+    themselves rather than into a chat.
+
+    Args:
+        verify_key: Also ask Statens vegvesen whether the key is accepted. Costs
+            one lookup against a plate no vehicle uses, so nothing real is read.
+    """
+    key_state = describe_secret(API_KEY_NAME)
+    registry_ready = bool(key_state["configured"])
+
+    result: dict[str, Any] = {
+        "version": __version__,
+        "always_available": {
+            "tools": [
+                "search_finn",
+                "get_search_filters",
+                "get_listing",
+                "view_listing_images",
+                "find_comparables",
+                "create_watch",
+                "list_watches",
+                "check_watch",
+                "delete_watch",
+            ],
+            "note": "FINN pages are public; these need no credentials.",
+        },
+        "vehicle_registry": {
+            "tools": ["lookup_vehicle", "verify_car"],
+            "key_name": API_KEY_NAME,
+            "configured": registry_ready,
+            "active_source": key_state["active_source"],
+            "searched": key_state["checked"],
+            "warnings": key_state["warnings"],
+        },
+    }
+
+    if not registry_ready:
+        result["vehicle_registry"]["how_to_enable"] = {
+            "step_1": (
+                f"Order a personal key with BankID at {ORDER_KEY_URL} — it is free, "
+                "allows 50 000 lookups a day, and arrives on Din side."
+            ),
+            "step_2": (
+                "Paste it into one of the files below yourself. Never paste an API "
+                "key into a chat, a commit, or a shared file."
+            ),
+            "step_3": (
+                "Run check_setup again with verify_key=true to confirm it works."
+            ),
+            "files": secret_locations(),
+            "line_to_add": f"{API_KEY_NAME}=<your key>",
+            "then": "Restart the MCP client so the server picks up the change.",
+        }
+    elif verify_key:
+        result["vehicle_registry"]["verification"] = await _vegvesen.verify_key()
+
+    return result
 
 
 @mcp.tool()

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
 _PROJECT_ENV = Path(__file__).resolve().parents[2] / ".env"
 _USER_ENV = Path(
@@ -52,3 +53,52 @@ def get_secret(name: str) -> str | None:
 def secret_locations() -> list[str]:
     """Where a user could put a secret — for error messages, never values."""
     return [str(_PROJECT_ENV), str(_USER_ENV)]
+
+
+def describe_secret(name: str) -> dict[str, Any]:
+    """Report *where* a secret is configured and nothing about its value.
+
+    Setup help has to be able to say "your key is in ~/.config/..." without
+    ever handling the key itself, so this returns locations and warnings only.
+    """
+    checked: list[dict[str, Any]] = []
+    holders: list[str] = []
+
+    from_env = os.environ.get(name)
+    has_env = bool(from_env and from_env.strip())
+    checked.append({"source": "environment variable", "has_key": has_env})
+    if has_env:
+        holders.append("environment variable")
+
+    warnings: list[str] = []
+    for path in (_PROJECT_ENV, _USER_ENV):
+        exists = path.is_file()
+        has_key = bool(_read_env_file(path).get(name))
+        checked.append({"source": str(path), "exists": exists, "has_key": has_key})
+        if has_key:
+            holders.append(str(path))
+        if exists and _is_group_or_world_readable(path):
+            warnings.append(
+                f"{path} is readable by other accounts on this machine. "
+                f"Tighten it with: chmod 600 {path}"
+            )
+
+    if len(holders) > 1:
+        warnings.append(
+            f"{name} is set in more than one place ({', '.join(holders)}). "
+            f"The first one wins, so editing the others has no effect."
+        )
+
+    return {
+        "configured": bool(holders),
+        "active_source": holders[0] if holders else None,
+        "checked": checked,
+        "warnings": warnings,
+    }
+
+
+def _is_group_or_world_readable(path: Path) -> bool:
+    try:
+        return bool(path.stat().st_mode & 0o077)
+    except OSError:
+        return False

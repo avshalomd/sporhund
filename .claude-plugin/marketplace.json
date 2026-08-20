@@ -1,0 +1,15 @@
+{
+  "name": "sporhund",
+  "owner": { "name": "Avshalom Dayan", "url": "https://github.com/avshalomd" },
+  "metadata": {
+    "description": "Sporhund — a FINN.no connector for your own AI agent.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "sporhund",
+      "source": "./",
+      "description": "Search, inspect and track FINN.no listings, and check car ads against Norway's vehicle registry."
+    }
+  ]
+}
