@@ -31,8 +31,11 @@ LIST_WIDTH = 80
 HERO_WIDTH = 240
 STRIP_WIDTH = 80
 DEFAULT_LIMIT = 6
-# Rough guard: base64 chars / 4 ~= tokens. Warn before a widget gets expensive.
-TOKEN_WARN = 25_000
+# base64 chars / 4 ~= tokens. The fragment has to survive one tool result in
+# one piece: an oversized print is truncated to a file, and reading that file
+# back is the second pass this whole design exists to avoid. So the budget is
+# enforced by downgrading images, not by hoping.
+DEFAULT_BUDGET = 5_000
 
 NB = " "
 
@@ -85,7 +88,8 @@ font-variant-numeric:tabular-nums}
 .sh-n{font-size:13px;font-weight:600;color:var(--text-primary)}
 .sh-m{font-family:var(--font-mono);font-size:11.5px;color:var(--text-secondary)}
 .sh-f{font-family:var(--font-mono);font-size:11px;color:var(--text-muted);padding-top:var(--gap-xs)}
-.sh-hero{width:100%;max-height:230px;object-fit:cover;border-radius:var(--radius);display:block}
+.sh-hero{width:100%;max-height:230px;object-fit:cover;border-radius:var(--radius);display:block}\
+.sh-hero.sm{width:96px;height:72px}
 .sh-strip{display:flex;gap:6px;margin-top:6px}
 .sh-strip img{width:56px;height:42px;object-fit:cover;border-radius:3px;display:block}
 .sh-spec{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:var(--gap-xs);\
@@ -172,7 +176,8 @@ _SPEC = [("year", "Year", ""), ("mileage", "Mileage", "km"), ("fuel", "Fuel", ""
          ("registration_number", "Reg.", ""), ("condition", "Condition", "")]
 
 
-def detail_widget(listing: dict[str, Any], hero: str | None, strip: list[str]) -> str:
+def detail_widget(listing: dict[str, Any], hero: str | None, strip: list[str],
+                  *, hero_width: int = HERO_WIDTH) -> str:
     """One listing, in enough depth to decide whether to open the ad."""
     props = listing.get("properties") or {}
     cells = []
@@ -187,7 +192,9 @@ def detail_widget(listing: dict[str, Any], hero: str | None, strip: list[str]) -
         cells.append(f'<div class="sh-c"><div class="sh-k">{esc(label)}</div>'
                      f'<div class="sh-v">{esc(value)}</div></div>')
 
-    picture = f'<img class="sh-hero" src="{hero}" alt="">' if hero else ""
+    # A small source stretched full-width just looks broken; show it small.
+    size = "" if hero_width > LIST_WIDTH else " sm"
+    picture = f'<img class="sh-hero{size}" src="{hero}" alt="">' if hero else ""
     thumbs = "".join(f'<img src="{s}" alt="">' for s in strip)
     strip_html = f'<div class="sh-strip">{thumbs}</div>' if thumbs else ""
     blurb = (listing.get("description") or "").strip()
@@ -247,7 +254,7 @@ async def build(args: argparse.Namespace) -> str:
     urls = listing.get("images") or []
     hero, strip = None, []
     if not args.no_images and urls:
-        payload, mime = await client.fetch_image(urls[0], width=HERO_WIDTH)
+        payload, mime = await client.fetch_image(urls[0], width=args.hero)
         hero = uri(payload, mime)
         for url in urls[1 : 1 + args.strip]:
             try:
@@ -255,7 +262,7 @@ async def build(args: argparse.Namespace) -> str:
             except Exception:
                 continue
             strip.append(uri(data, mt))
-    return detail_widget(listing, hero, strip)
+    return detail_widget(listing, hero, strip, hero_width=args.hero)
 
 
 def main() -> None:
@@ -268,6 +275,9 @@ def main() -> None:
     images = argparse.ArgumentParser(add_help=False)
     images.add_argument("--no-images", action="store_true",
                         help="Text only; costs almost nothing.")
+    images.add_argument("--budget", type=int, default=DEFAULT_BUDGET,
+                        help=f"Token ceiling (default {DEFAULT_BUDGET}); photos are "
+                             "shed automatically to stay under it.")
 
     lst = sub.add_parser("list", parents=[images], help="Several listings, compact.")
     lst.add_argument("vertical", choices=("torget", "car", "job"))
@@ -283,16 +293,40 @@ def main() -> None:
     one.add_argument("finnkode")
     one.add_argument("--strip", type=int, default=2,
                      help="Extra small photos (default 2; each adds ~1k tokens, 0 saves most).")
+    one.add_argument("--hero", type=int, default=LIST_WIDTH,
+                     help=f"Hero photo width (default {LIST_WIDTH}). {HERO_WIDTH} gives a\n                           real photo but costs ~5.9k tokens, so raise --budget with it.")
 
     args = parser.parse_args()
-    fragment = asyncio.run(build(args))
-    estimate = len(fragment) // 4
-    if estimate > TOKEN_WARN:
-        print(f"! ~{estimate} tokens — lower --limit or --width, or use --no-images.",
-              file=sys.stderr)
-    else:
-        print(f"# ~{estimate} tokens", file=sys.stderr)
+    fragment, note = asyncio.run(_within_budget(args))
+    print(f"# ~{len(fragment) // 4} tokens{note}", file=sys.stderr)
     print(fragment)
+
+
+async def _within_budget(args: argparse.Namespace) -> tuple[str, str]:
+    """Build the widget, shedding image quality until it fits the budget.
+
+    Downgrading beats warning: a fragment over budget gets truncated out of the
+    tool result, and recovering it costs more than the photos were worth.
+    """
+    fragment = await build(args)
+    if args.no_images or len(fragment) // 4 <= args.budget:
+        return fragment, ""
+
+    steps = []
+    if args.mode == "list" and getattr(args, "width", LIST_WIDTH) > LIST_WIDTH:
+        steps.append(("width", LIST_WIDTH, f"thumbnails dropped to {LIST_WIDTH}w"))
+    if args.mode == "one":
+        steps.append(("strip", 0, "small photos dropped"))
+        steps.append(("hero", LIST_WIDTH, f"hero dropped to {LIST_WIDTH}w"))
+    for attribute, value, said in steps:
+        setattr(args, attribute, value)
+        fragment = await build(args)
+        if len(fragment) // 4 <= args.budget:
+            return fragment, f" ({said} to fit the budget)"
+
+    args.no_images = True
+    fragment = await build(args)
+    return fragment, " (photos dropped entirely; raise --budget to keep them)"
 
 
 if __name__ == "__main__":

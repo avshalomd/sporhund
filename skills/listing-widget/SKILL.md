@@ -43,11 +43,18 @@ uvx --from sporhund sporhund-widget list car "tesla model 3" \
 The median it reports is over the whole result set, not just the rows shown —
 a median of three hand-picked listings would be meaningless.
 
-**One listing — detailed.** Hero photo, small strip, specification grid, and an
-excerpt of the seller's description.
+**One listing — detailed.** Photo, specification grid, and an excerpt of the
+seller's description.
 
 ```bash
 uvx --from sporhund sporhund-widget one 256110421
+```
+
+That costs about 4.5k tokens and shows a small, crisp photo. When the picture is
+the point — condition, damage, what's included — ask for a real one:
+
+```bash
+uvx --from sporhund sporhund-widget one 256110421 --hero 240 --budget 8000
 ```
 
 ## Token budget
@@ -60,16 +67,20 @@ Photos are essentially the entire cost. Measured against FINN's CDN:
 | 240 (hero default) | ~5.9k tokens | only worth it for a single hero |
 | 320 | ~10.5k tokens | don't |
 
-So a six-listing widget costs roughly **7k tokens**, and a detailed single
-listing roughly **8–11k**. The command prints its own estimate to stderr and
-warns past ~25k.
+So a six-listing widget costs roughly **7k tokens**, and a detailed listing
+about **4.5k** (or 8k with `--hero 240`).
 
-Bring it down when you need to:
+The command enforces this rather than trusting you: it prints its own estimate,
+and if a widget would exceed `--budget` (default 5000) it sheds photos — strip
+first, then hero size, then photos entirely — and says which it dropped. That
+matters because an oversized fragment gets truncated out of the tool result, and
+recovering it costs more than the photos were worth.
+
+Bring it down further when you need to:
 
 - `--limit 4` — fewer rows.
 - `--no-images` — near-free; right when the user is comparing numbers, not
   looking at cars.
-- `--strip 0` on `one` — drops the small photos, keeps the hero.
 - Never raise `--width` above 80 for a list.
 
 ## When not to render one
