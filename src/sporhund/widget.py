@@ -34,12 +34,16 @@ from .finn import FinnClient
 # 80w is too small to look at and 240w is too many bytes to emit in one piece.
 # So fetch a good source and re-encode to an exact byte budget instead.
 SOURCE_WIDTH = 640
+# Every photo is a base64 string that has to be carried intact into the widget
+# call. Short ones survive that; a single ~15 KB blob does not, and arrives
+# corrupted. So a detail card shows *several small* photos rather than one big
+# one — same bytes, more of the car, and each blob stays in the size range that
+# actually works.
 THUMB_BYTES = 2_000     # a list row's thumbnail
-HERO_BYTES = 11_000     # the main photo on a detail card
-STRIP_BYTES = 1_000     # its smaller siblings
+PHOTO_BYTES = 2_000     # each photo on a detail card
 THUMB_SIDE = 220
-HERO_SIDE = 400
-STRIP_SIDE = 150
+PHOTO_SIDE = 240
+MAX_PHOTOS = 4
 DEFAULT_LIMIT = 6
 # base64 chars / 4 ~= tokens. The fragment has to survive one tool result in
 # one piece: an oversized print is truncated to a file, and reading that file
@@ -152,11 +156,9 @@ padding-top:var(--gap-xs)}
 _DETAIL_CSS = """<style>
 .sh-one{font-family:var(--font-sans)}
 .sh-one .sh-r{grid-template-columns:1fr;gap:var(--gap-sm)}
-.sh-hero{width:100%;max-width:360px;aspect-ratio:4/3;object-fit:cover;\
-border-radius:var(--radius);display:block}
-.sh-strip{display:flex;gap:6px;max-width:360px}\
-.sh-strip img{flex:1 1 0}
-.sh-strip img{min-width:0;aspect-ratio:4/3;object-fit:cover;border-radius:4px;display:block}
+.sh-gal{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px}
+.sh-gal img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px;display:block;\
+background:var(--surface-0)}
 .sh-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .sh-tags{display:flex;gap:5px;flex-wrap:wrap}
 .sh-spec{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:var(--gap-xs)}
@@ -259,7 +261,7 @@ _SPEC = [("year", "Year", ""), ("mileage", "Mileage", "km"), ("fuel", "Fuel", ""
          ("registration_number", "Reg.", ""), ("condition", "Condition", "")]
 
 
-def detail_widget(listing: dict[str, Any], hero: str | None, strip: list[str]) -> str:
+def detail_widget(listing: dict[str, Any], photos: list[str]) -> str:
     """One listing, in enough depth to decide whether to open the ad."""
     props = listing.get("properties") or {}
     cells = []
@@ -274,9 +276,8 @@ def detail_widget(listing: dict[str, Any], hero: str | None, strip: list[str]) -
         cells.append(f'<div class="sh-c"><div class="sh-k">{esc(label)}</div>'
                      f'<div class="sh-v">{esc(value)}</div></div>')
 
-    picture = f'<img class="sh-hero" src="{hero}" alt="">' if hero else ""
-    thumbs = "".join(f'<img src="{s}" alt="">' for s in strip)
-    strip_html = f'<div class="sh-strip">{thumbs}</div>' if thumbs else ""
+    tiles = "".join(f'<img src="{p}" alt="">' for p in photos)
+    gallery = f'<div class="sh-gal">{tiles}</div>' if tiles else ""
     blurb = (listing.get("description") or "").strip()
     if len(blurb) > 300:
         blurb = blurb[:300].rsplit(" ", 1)[0] + "…"
@@ -289,10 +290,10 @@ def detail_widget(listing: dict[str, Any], hero: str | None, strip: list[str]) -
         f'with photos, key specification and an excerpt of the seller\'s description.</h2>'
         f'{_BASE_CSS}{_DETAIL_CSS}<div class="sh-one">'
         f'<a class="sh-r" href="{esc(listing.get("url"))}">'
-        f'{picture}{strip_html}'
         f'<div class="sh-head"><span class="sh-n">{esc(name)}</span>'
         f'<span class="sh-p">{esc(kr(listing.get("price")))}</span></div>'
         + (f'<div class="sh-tags">{tags}</div>' if tags else "")
+        + gallery
         + f'<div class="sh-spec">{"".join(cells)}</div>'
         + (f'<div class="sh-q">{esc(blurb)}</div>' if blurb else "")
         + "</a></div>"
@@ -333,17 +334,18 @@ async def build(args: argparse.Namespace) -> str:
 
     listing = await client.get_listing(args.finnkode)
     urls = listing.get("images") or []
-    hero, strip = None, []
-    if not args.no_images and urls:
-        payload, _ = await client.fetch_image(urls[0], width=SOURCE_WIDTH)
-        hero = uri(fit_jpeg(payload, max_bytes=args.hero_bytes, max_side=HERO_SIDE, ratio=4 / 3))
-        for url in urls[1 : 1 + args.strip]:
+    photos: list[str] = []
+    if not args.no_images:
+        for url in urls[: args.photos]:
             try:
                 data, _ = await client.fetch_image(url, width=SOURCE_WIDTH)
-            except Exception:
+            except Exception as exc:
+                print(f"! photo: {exc}", file=sys.stderr)
                 continue
-            strip.append(uri(fit_jpeg(data, max_bytes=STRIP_BYTES, max_side=STRIP_SIDE, ratio=4 / 3)))
-    return detail_widget(listing, hero, strip)
+            photos.append(
+                uri(fit_jpeg(data, max_bytes=args.photo_bytes,
+                             max_side=PHOTO_SIDE, ratio=4 / 3)))
+    return detail_widget(listing, photos)
 
 
 def main() -> None:
@@ -372,10 +374,10 @@ def main() -> None:
 
     one = sub.add_parser("one", parents=[images], help="A single listing, in detail.")
     one.add_argument("finnkode")
-    one.add_argument("--strip", type=int, default=3,
-                     help="Small photos beside the main one (default 3).")
-    one.add_argument("--hero-bytes", type=int, default=HERO_BYTES,
-                     help=f"Bytes for the main photo before base64 (default {HERO_BYTES}).")
+    one.add_argument("--photos", type=int, default=MAX_PHOTOS,
+                     help=f"How many photos (default {MAX_PHOTOS}); each costs ~700 tokens.")
+    one.add_argument("--photo-bytes", type=int, default=PHOTO_BYTES,
+                     help=f"Bytes per photo before base64 (default {PHOTO_BYTES}). Large\n                           blobs do not survive being carried into a widget, so keep this small.")
 
     args = parser.parse_args()
     fragment, note = asyncio.run(_within_budget(args))
@@ -399,10 +401,9 @@ async def _within_budget(args: argparse.Namespace) -> tuple[str, str]:
         steps = [("thumb_bytes", 1_100, "thumbnails compressed harder"),
                  ("thumb_bytes", 700, "thumbnails compressed hardest")]
     else:
-        steps = [("strip", 1, "fewer small photos"),
-                 ("strip", 0, "small photos dropped"),
-                 ("hero_bytes", 6_000, "photo compressed harder"),
-                 ("hero_bytes", 3_000, "photo compressed hardest")]
+        steps = [("photos", 3, "one fewer photo"),
+                 ("photos", 2, "two fewer photos"),
+                 ("photo_bytes", 1_300, "photos compressed harder")]
     for attribute, value, said in steps:
         setattr(args, attribute, value)
         fragment = await build(args)

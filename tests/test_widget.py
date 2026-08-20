@@ -18,8 +18,8 @@ import pytest
 
 from sporhund.widget import (
     DEFAULT_BUDGET,
-    HERO_BYTES,
-    STRIP_BYTES,
+    MAX_PHOTOS,
+    PHOTO_BYTES,
     THUMB_BYTES,
     car_name,
     compact_widget,
@@ -86,7 +86,7 @@ def test_a_widget_with_no_photos_is_cheap():
 def test_detail_shows_spec_and_trims_a_long_description():
     listing = {"name": "Tesla Model 3", "url": "https://www.finn.no/x/2", "price": 214532,
                "description": "word " * 200, "properties": {"year": 2019, "mileage": 98560}}
-    html = detail_widget(listing, None, [])
+    html = detail_widget(listing, [])
     assert "Year" in html and "2019" in html
     assert "…" in html
     assert len(html) < 6000
@@ -99,8 +99,15 @@ def test_photo_budgets_stay_small_enough_to_emit_in_one_piece():
     ceiling = 23_000
     stylesheet_and_markup = 4_000
     assert THUMB_BYTES * 6 * 4 // 3 + stylesheet_and_markup < ceiling
-    assert (HERO_BYTES + 3 * STRIP_BYTES) * 4 // 3 + stylesheet_and_markup < ceiling
+    assert PHOTO_BYTES * MAX_PHOTOS * 4 // 3 + stylesheet_and_markup < ceiling
     assert DEFAULT_BUDGET * 4 < ceiling
+
+
+def test_no_single_photo_is_large_enough_to_arrive_corrupted():
+    """A ~15 KB base64 blob does not survive being carried into a widget call;
+    ~3 KB ones do. Every photo must stay in the range that works."""
+    assert PHOTO_BYTES * 4 // 3 < 3_500
+    assert THUMB_BYTES * 4 // 3 < 3_500
 
 
 @pytest.mark.parametrize("row,expected", [
@@ -133,7 +140,7 @@ def test_fit_jpeg_lands_under_its_byte_budget():
 @pytest.mark.parametrize("html", [
     compact_widget(ROWS, {}, title="t"),
     detail_widget({"name": "x", "url": "https://www.finn.no/x", "price": 1,
-                   "properties": {}}, None, []),
+                   "properties": {}}, []),
 ])
 def test_every_style_block_is_closed(html):
     """An unclosed <style> swallows the markup that follows it as CSS text."""
