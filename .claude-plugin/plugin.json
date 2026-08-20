@@ -2,15 +2,27 @@
   "name": "sporhund",
   "description": "A FINN.no connector for your agent: search, inspect and track Norwegian marketplace listings, and cross-check car ads against the official vehicle registry.",
   "version": "0.2.0",
-  "author": { "name": "Avshalom Dayan", "url": "https://github.com/avshalomd" },
+  "author": {
+    "name": "Avshalom Dayan",
+    "url": "https://github.com/avshalomd"
+  },
   "homepage": "https://github.com/avshalomd/sporhund",
   "repository": "https://github.com/avshalomd/sporhund",
   "license": "MIT",
-  "keywords": ["finn", "finn.no", "norway", "marketplace", "cars", "mcp"],
+  "keywords": [
+    "finn",
+    "finn.no",
+    "norway",
+    "marketplace",
+    "cars",
+    "mcp"
+  ],
   "mcpServers": {
     "sporhund": {
       "command": "uvx",
-      "args": ["--from", "${CLAUDE_PLUGIN_ROOT}", "sporhund"]
+      "args": [
+        "sporhund"
+      ]
     }
   }
 }
