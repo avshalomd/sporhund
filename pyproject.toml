@@ -1,6 +1,6 @@
 [project]
 name = "sporhund"
-version = "0.2.0"
+version = "0.3.0"
 description = "A FINN.no connector for your AI agent — search, inspect and track Norwegian marketplace listings."
 readme = "README.md"
 requires-python = ">=3.10"
