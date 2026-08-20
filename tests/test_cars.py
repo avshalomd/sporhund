@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from sporhund.cars import comparable_query, median_of, price_position
+from sporhund.cars import (
+    comparable_filter_steps,
+    comparable_query,
+    median_of,
+    price_position,
+)
 
 
 @pytest.mark.parametrize(
@@ -47,3 +52,30 @@ def test_price_position() -> None:
 def test_median_of_ignores_junk() -> None:
     assert median_of([2018, None, 2020, "x", 2019]) == 2019
     assert median_of([]) is None
+
+
+def test_widening_steps_loosen_monotonically():
+    steps = comparable_filter_steps(2019, 68000, year_spread=1, mileage_spread=40000)
+
+    assert [s.get("year_from") for s in steps] == [2018, 2017, 2016, None]
+    assert [s.get("year_to") for s in steps] == [2020, 2021, 2022, None]
+    # Mileage widens once, then is dropped entirely — a rare car's mileage band
+    # is the constraint that bites first.
+    assert [s.get("mileage_to") for s in steps] == [108000, 148000, None, None]
+    assert all(s["sales_form"] == "1" for s in steps)
+
+
+def test_widening_never_asks_for_negative_mileage():
+    steps = comparable_filter_steps(1986, 10000, year_spread=1, mileage_spread=40000)
+    assert [s.get("mileage_from") for s in steps] == [0, 0, None, None]
+
+
+def test_no_year_or_mileage_collapses_to_a_single_step():
+    """Auction ads often carry neither, so every band would be identical."""
+    assert comparable_filter_steps(None, None, 1, 40000) == [{"sales_form": "1"}]
+
+
+def test_year_only_still_widens_but_does_not_repeat_the_last_step():
+    steps = comparable_filter_steps(1986, None, year_spread=1, mileage_spread=40000)
+    assert [s.get("year_from") for s in steps] == [1985, 1984, 1983, None]
+    assert all("mileage_from" not in s for s in steps)

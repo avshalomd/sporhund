@@ -30,7 +30,15 @@ from .finn import (
     SEARCH_URLS,
     summarize,
 )
-from .cars import brief, comparable_query, fuel_matches, median_of, price_position
+from .cars import (
+    MIN_COMPARABLES,
+    brief,
+    comparable_filter_steps,
+    comparable_query,
+    fuel_matches,
+    median_of,
+    price_position,
+)
 from .store import Store
 from .vegvesen import (
     API_KEY_NAME,
@@ -472,6 +480,7 @@ async def find_comparables(
     year_spread: int = 1,
     mileage_spread: int = 40000,
     query: str = "",
+    widen: bool = True,
 ) -> dict[str, Any]:
     """Position a car against the listings a buyer would cross-shop.
 
@@ -491,6 +500,9 @@ async def find_comparables(
         mileage_spread: Comparable mileage = subject km ± this (default 40 000).
         query: Override the auto-derived model search (use when the auto query
             comes back too broad or too narrow — check `search_used` in the result).
+        widen: Loosen the year/mileage bands step by step until at least five
+            comparables are found (default true). Set false to hold the bands
+            exactly as given. Check `search_used.widened` to see if it happened.
     """
     subject = await _client.get_listing(finnkode_or_url)
     props = subject.get("properties") or {}
@@ -500,19 +512,19 @@ async def find_comparables(
     if not q:
         raise ValueError("Could not derive a model query from this ad; pass `query`.")
 
-    # Used-cars-for-sale only: leasing ads list their monthly rate as the
-    # price and would wreck the percentile.
-    filters: dict[str, Any] = {"sales_form": "1"}
     year, mileage = props.get("year"), props.get("mileage")
-    if year:
-        filters["year_from"], filters["year_to"] = year - year_spread, year + year_spread
-    if isinstance(mileage, int):
-        filters["mileage_from"] = max(0, mileage - mileage_spread)
-        filters["mileage_to"] = mileage + mileage_spread
-
-    result = await _client.search("car", query=q, filters=filters)
     subject_code = str(subject.get("url", "")).rstrip("/").rsplit("/", 1)[-1]
-    comps = [l for l in result.listings if l.finnkode != subject_code]
+
+    # A rare car has no cohort inside the default bands, so loosen them until
+    # there are enough comparables to say anything — and report that we did.
+    steps = comparable_filter_steps(year, mileage, year_spread, mileage_spread)
+    if not widen:
+        steps = steps[:1]
+    for attempt, filters in enumerate(steps):
+        result = await _client.search("car", query=q, filters=filters)
+        comps = [l for l in result.listings if l.finnkode != subject_code]
+        if len(comps) >= MIN_COMPARABLES:
+            break
 
     # An e-Golf priced against petrol Golfs is a wrong answer: keep same-fuel
     # comparables when fuel is known on both sides and enough of them remain.
@@ -529,7 +541,8 @@ async def find_comparables(
             "year": year, "mileage": mileage, "url": subject.get("url"),
         },
         "search_used": {"query": q, "filters": filters,
-                        "total_matches": result.total_matches},
+                        "total_matches": result.total_matches,
+                        "widened": attempt > 0},
         "comparables_seen": len(comps),
         "fuel_matched": fuel_filtered,
     }
@@ -542,11 +555,25 @@ async def find_comparables(
         out["cheapest_comparables"] = [
             brief(l) for l in sorted((l for l in comps if l.price), key=lambda x: x.price)[:8]
         ]
-        if pos.get("n", 0) < 5:
+        if pos.get("n", 0) < MIN_COMPARABLES:
             out["warning"] = (
+                "Fewer than 5 comparables even with the bands fully loosened — "
+                "this model is thin on FINN right now, so treat the position as "
+                "indicative only, or pass a broader `query`."
+                if attempt == len(steps) - 1 and widen else
                 "Fewer than 5 comparables — widen year_spread/mileage_spread or "
                 "adjust `query` before trusting the position."
             )
+
+    # An auction bid or a leasing rate is not an asking price; saying so beats
+    # letting the agent read the percentile as a discount.
+    sales_form = props.get("sales_form")
+    if sales_form and not str(sales_form).lower().startswith("bruktbil"):
+        out["subject_price_note"] = (
+            f"This ad is \"{sales_form}\", so its price is not a normal asking "
+            "price — comparables are asking prices for used cars, so the position "
+            "below is not a like-for-like discount."
+        )
     out["caveats"] = (
         "Asking prices, not sold prices. Trim/equipment not matched — skim the "
         "comparables before quoting numbers."

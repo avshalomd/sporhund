@@ -83,3 +83,37 @@ def fuel_matches(a: str | None, b: str | None) -> bool:
         return False
     x, y = a.strip().lower(), b.strip().lower()
     return x.startswith(y) or y.startswith(x)
+
+
+# Enough comparables for a percentile to mean anything.
+MIN_COMPARABLES = 5
+
+# How far to loosen the bands, step by step, when a car is rare: multiply the
+# year/mileage spreads, then drop mileage, then drop both. A ±1-year band is
+# right for a 2022 Golf and useless for a 1986 one.
+_WIDENING = ((1, 1), (2, 2), (3, None), (None, None))
+
+
+def comparable_filter_steps(
+    year: int | None,
+    mileage: int | None,
+    year_spread: int,
+    mileage_spread: int,
+) -> list[dict[str, Any]]:
+    """Search filters from tightest to loosest, for progressive widening.
+
+    Always sales_form 1 (used cars for sale): leasing ads price a month and
+    auctions price a current bid, so neither belongs in an asking-price median.
+    """
+    steps: list[dict[str, Any]] = []
+    for year_mult, mileage_mult in _WIDENING:
+        f: dict[str, Any] = {"sales_form": "1"}
+        if year and year_mult:
+            f["year_from"] = year - year_spread * year_mult
+            f["year_to"] = year + year_spread * year_mult
+        if isinstance(mileage, int) and mileage_mult:
+            f["mileage_from"] = max(0, mileage - mileage_spread * mileage_mult)
+            f["mileage_to"] = mileage + mileage_spread * mileage_mult
+        if f not in steps:  # collapses to one step when year and mileage are unknown
+            steps.append(f)
+    return steps

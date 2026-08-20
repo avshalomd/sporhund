@@ -3,6 +3,27 @@
 Notable changes per release. Versions follow [semantic versioning](https://semver.org);
 while the major version is 0, minor bumps may change tool outputs.
 
+## Unreleased
+
+### Fixed
+
+- `find_comparables` now loosens the year and mileage bands step by step until
+  it has at least five comparables, instead of reporting a percentile computed
+  from two. The default ±1 year / ±40 000 km is right for a common modern car
+  and far too narrow for a rare or old one — a 1986 Golf returned two
+  comparables and a meaningless −70% position; it now returns seven. The result
+  reports `search_used.widened` so the loosening is never silent, and a common
+  car still resolves in a single search.
+- `find_comparables` flags when the *subject* is an auction or leasing ad via
+  `subject_price_note`. Comparables are used-car asking prices, so a current
+  auction bid sitting far below them is not a discount, and the percentile
+  should not be read as one.
+
+### Added
+
+- `find_comparables` takes `widen` (default true) to hold the bands exactly as
+  given.
+
 ## 0.2.0 — 2026-08-20
 
 First release published to PyPI. Earlier versions existed only as a git
