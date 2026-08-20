@@ -3,7 +3,7 @@
   "owner": { "name": "Avshalom Dayan", "url": "https://github.com/avshalomd" },
   "metadata": {
     "description": "Sporhund — a FINN.no connector for your own AI agent.",
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "plugins": [
     {

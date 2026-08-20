@@ -154,6 +154,28 @@ with `"command": "uv"` instead.
 
 Then ask Claude to search or watch FINN in plain language.
 
+## Updating
+
+Ask your agent to run `check_setup` — it reports the running version, which is
+the reliable way to tell what you actually have. Then, depending on how you
+installed it:
+
+| Installed as | Update with |
+|---|---|
+| `uvx sporhund` (PyPI) | `uvx --refresh sporhund` — or clear the cache with `uv cache clean sporhund` |
+| Claude Code plugin | `claude plugin update sporhund@sporhund` |
+| Git checkout | `git pull && uv sync` |
+
+**Restart the MCP client afterwards.** The server is a long-lived stdio process,
+so a running client keeps the old code until it re-launches it.
+
+Version numbers before 0.2.0 were never published: a `0.1.0` install is a git
+checkout of unknown vintage, so pull and re-sync rather than trusting the
+number. Your saved watches and their seen-listing history are untouched by an
+update — they live in a separate SQLite file — and your API key is read from
+`.env` at call time, so it survives upgrades too. See [CHANGELOG.md](CHANGELOG.md)
+for what changed.
+
 ## How it works
 
 - Search pages: FINN server-renders results and embeds them as a base64 JSON
