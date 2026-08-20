@@ -21,21 +21,33 @@ import argparse
 import asyncio
 import base64
 import html
+import io
 import json
 import sys
 from typing import Any
 
+from PIL import Image
+
 from .finn import FinnClient
 
-LIST_WIDTH = 80
-HERO_WIDTH = 240
-STRIP_WIDTH = 80
+# FINN's CDN only serves a fixed ladder of widths, which leaves an awkward gap:
+# 80w is too small to look at and 240w is too many bytes to emit in one piece.
+# So fetch a good source and re-encode to an exact byte budget instead.
+SOURCE_WIDTH = 640
+THUMB_BYTES = 2_000     # a list row's thumbnail
+HERO_BYTES = 11_000     # the main photo on a detail card
+STRIP_BYTES = 1_000     # its smaller siblings
+THUMB_SIDE = 220
+HERO_SIDE = 400
+STRIP_SIDE = 150
 DEFAULT_LIMIT = 6
 # base64 chars / 4 ~= tokens. The fragment has to survive one tool result in
 # one piece: an oversized print is truncated to a file, and reading that file
 # back is the second pass this whole design exists to avoid. So the budget is
 # enforced by downgrading images, not by hoping.
-DEFAULT_BUDGET = 5_000
+# Measured, not guessed: a ~24 KB tool result survives whole, a ~31 KB one is
+# truncated to a file. 5 600 tokens is ~22.4 KB, which leaves margin.
+DEFAULT_BUDGET = 5_600
 
 NB = " "
 
@@ -64,43 +76,97 @@ def median(values: list[int]) -> int | None:
     return xs[n // 2] if n % 2 else (xs[n // 2 - 1] + xs[n // 2]) // 2
 
 
-def uri(payload: bytes, mime: str) -> str:
+def uri(payload: bytes, mime: str = "image/jpeg") -> str:
     return f"data:{mime};base64," + base64.b64encode(payload).decode("ascii")
 
 
-CSS = """<style>
+def fit_jpeg(payload: bytes, *, max_bytes: int, max_side: int, ratio: float | None = None) -> bytes:
+    """Re-encode a photo to land under `max_bytes`, shrinking quality then size.
+
+    Every byte here becomes four-thirds of a byte of base64 in the agent's
+    context, so the budget is the design constraint and picture quality is what
+    gets spent against it — not the other way round.
+    """
+    image = Image.open(io.BytesIO(payload))
+    image = image.convert("RGB")
+    if ratio:
+        image = _centre_crop(image, ratio)
+    image.thumbnail((max_side, max_side), Image.LANCZOS)
+
+    best = None
+    while True:
+        for quality in (72, 60, 50, 42, 35, 28):
+            buffer = io.BytesIO()
+            image.save(buffer, "JPEG", quality=quality, optimize=True, progressive=True)
+            best = buffer.getvalue()
+            if len(best) <= max_bytes:
+                return best
+        if min(image.size) <= 64:  # already tiny; take what we have
+            return best
+        image = image.resize((int(image.width * 0.8), int(image.height * 0.8)), Image.LANCZOS)
+
+
+def _centre_crop(image: Image.Image, ratio: float) -> Image.Image:
+    """Crop to an aspect ratio around the middle, where the subject usually is."""
+    width, height = image.size
+    if width / height > ratio:
+        new_width = int(height * ratio)
+        left = (width - new_width) // 2
+        return image.crop((left, 0, left + new_width, height))
+    new_height = int(width / ratio)
+    top = (height - new_height) // 2
+    return image.crop((0, top, width, top + new_height))
+
+
+_BASE_CSS = """<style>
 .sh-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
-.sh-l{display:flex;flex-direction:column;gap:var(--gap-sm);font-family:var(--font-sans)}
-.sh-r{display:grid;grid-template-columns:72px 1fr;gap:var(--pad-md);align-items:center;\
-padding:var(--pad-md);background:var(--surface-1);border:1px solid var(--border);\
-border-radius:var(--radius);text-decoration:none;color:inherit}
+.sh-r{display:grid;gap:14px;align-items:center;padding:var(--pad-md);\
+background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);\
+text-decoration:none;color:inherit}
 .sh-r:hover{border-color:var(--border-strong)}
-.sh-t{width:72px;height:54px;object-fit:cover;border-radius:4px;display:block;background:var(--surface-0)}
-.sh-b{display:flex;flex-direction:column;gap:3px;min-width:0;align-items:flex-start}
-.sh-g{font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;\
-color:var(--text-accent);background:var(--bg-accent);padding:1px 6px;border-radius:3px}
-.sh-g.w{color:var(--text-warning);background:var(--bg-warning)}
-.sh-h{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
-.sh-p{font-family:var(--font-mono);font-size:18px;font-weight:600;color:var(--text-primary);\
+.sh-n{font-size:13.5px;font-weight:600;color:var(--text-primary);line-height:1.35}
+.sh-m{font-family:var(--font-mono);font-size:11.5px;color:var(--text-secondary);\
 font-variant-numeric:tabular-nums}
-.sh-d{font-family:var(--font-mono);font-size:11px;font-variant-numeric:tabular-nums;color:var(--text-secondary)}
+.sh-p{font-family:var(--font-mono);font-size:18px;font-weight:600;color:var(--text-primary);\
+font-variant-numeric:tabular-nums;letter-spacing:-.02em;white-space:nowrap}
+.sh-g{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;\
+color:var(--text-secondary);border:1px solid var(--border-strong);padding:1px 6px;border-radius:3px}
+.sh-g.w{color:var(--text-warning);border-color:var(--border-warning)}
+"""
+
+_LIST_CSS = """<style>
+.sh-l{display:flex;flex-direction:column;gap:var(--gap-sm);font-family:var(--font-sans)}
+.sh-l .sh-r{grid-template-columns:104px minmax(0,1fr) auto}
+.sh-t{width:104px;height:78px;object-fit:cover;border-radius:4px;display:block;\
+background:var(--surface-0)}
+.sh-b{display:flex;flex-direction:column;gap:4px;min-width:0}
+.sh-tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:1px}
+.sh-side{display:flex;flex-direction:column;align-items:flex-end;gap:3px;text-align:right}
+.sh-d{font-family:var(--font-mono);font-size:11px;font-variant-numeric:tabular-nums;\
+color:var(--text-secondary);white-space:nowrap}
 .sh-d.u{color:var(--text-success)}
-.sh-n{font-size:13px;font-weight:600;color:var(--text-primary)}
-.sh-m{font-family:var(--font-mono);font-size:11.5px;color:var(--text-secondary)}
-.sh-f{font-family:var(--font-mono);font-size:11px;color:var(--text-muted);padding-top:var(--gap-xs)}
-.sh-hero{width:100%;max-height:230px;object-fit:cover;border-radius:var(--radius);display:block}\
-.sh-hero.sm{width:96px;height:72px}
-.sh-strip{display:flex;gap:6px;margin-top:6px}
-.sh-strip img{width:56px;height:42px;object-fit:cover;border-radius:3px;display:block}
-.sh-spec{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:var(--gap-xs);\
-margin-top:var(--gap-sm)}
-.sh-c{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);\
-padding:var(--pad-sm)}
-.sh-k{font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;\
+.sh-f{font-family:var(--font-mono);font-size:11px;color:var(--text-muted);\
+padding-top:var(--gap-xs)}
+</style>"""
+
+_DETAIL_CSS = """<style>
+.sh-one{font-family:var(--font-sans)}
+.sh-one .sh-r{grid-template-columns:1fr;gap:var(--gap-sm)}
+.sh-hero{width:100%;max-width:360px;aspect-ratio:4/3;object-fit:cover;\
+border-radius:var(--radius);display:block}
+.sh-strip{display:flex;gap:6px;max-width:360px}\
+.sh-strip img{flex:1 1 0}
+.sh-strip img{min-width:0;aspect-ratio:4/3;object-fit:cover;border-radius:4px;display:block}
+.sh-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.sh-tags{display:flex;gap:5px;flex-wrap:wrap}
+.sh-spec{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:var(--gap-xs)}
+.sh-c{background:var(--surface-0);border:1px solid var(--border);border-radius:6px;\
+padding:7px 9px}
+.sh-k{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;\
 color:var(--text-muted)}
-.sh-v{font-family:var(--font-mono);font-size:13px;color:var(--text-primary);font-variant-numeric:tabular-nums}
-.sh-q{font-family:var(--font-voice);font-size:13px;color:var(--text-secondary);line-height:1.55;\
-margin-top:var(--gap-sm)}
+.sh-v{font-family:var(--font-mono);font-size:13px;color:var(--text-primary);\
+font-variant-numeric:tabular-nums}
+.sh-q{font-family:var(--font-voice);font-size:13px;color:var(--text-secondary);line-height:1.55}
 </style>"""
 
 
@@ -120,22 +186,36 @@ def _tags(row: dict[str, Any]) -> str:
     )
 
 
+def car_name(row: dict[str, Any]) -> str:
+    """"Tesla Model 3" plus its variant, without the dealer keyword dump.
+
+    `model_specification` is sometimes a real trim ("Long Range AWD") and
+    sometimes an advert ("SR / 415km / Skinn / Autopilot / EU27 / Norsk++++").
+    The first segment is the useful half of both.
+    """
+    heading = (row.get("heading") or "").strip()
+    spec = (row.get("model_specification") or "").strip()
+    if spec:
+        spec = spec.replace("|", "/").split("/")[0].strip(" -–,")
+    if not spec or spec.lower() in heading.lower() or len(spec) > 44:
+        return heading
+    return f"{heading} · {spec}"
+
+
 def compact_widget(rows: list[dict[str, Any]], thumbs: dict[str, str], *, title: str,
                    market: list[int] | None = None) -> str:
-    """A list of listings: thumbnail, price, what it is, how it sits vs the market.
+    """A list of listings, laid out like a classified ad: photo, what it is, price.
 
     `market` is every price the search found, not just the rows shown — a median
     of three hand-picked listings says nothing, a median of the whole result set
-    is the number worth comparing against."""
+    is the number worth comparing against.
+    """
     mid = median(market if market else [r.get("price") for r in rows])
     items = []
     for row in rows:
-        code = row.get("finnkode", "")
-        thumb = thumbs.get(code)
-        picture = (
-            f'<img class="sh-t" src="{thumb}" alt="">' if thumb
-            else '<div class="sh-t"></div>'
-        )
+        thumb = thumbs.get(row.get("finnkode", ""))
+        picture = (f'<img class="sh-t" src="{thumb}" alt="">' if thumb
+                   else '<div class="sh-t"></div>')
         price = row.get("price")
         delta = ""
         if mid and isinstance(price, int):
@@ -146,25 +226,28 @@ def compact_widget(rows: list[dict[str, Any]], thumbs: dict[str, str], *, title:
                 amount = f"{abs(gap):,}".replace(",", NB)
                 sign = "−" if gap < 0 else "+"
                 cls = " u" if gap < 0 else ""
-                delta = (f'<span class="sh-d{cls}">{sign}{amount} vs median</span>')
+                delta = f'<span class="sh-d{cls}">{sign}{amount} vs median</span>'
         spec = " · ".join(p for p in (
             str(row["year"]) if isinstance(row.get("year"), int) else None,
             num(row.get("mileage"), "km"),
             row.get("fuel"),
             row.get("location"),
         ) if p)
+        tags = _tags(row)
         items.append(
-            f'<a class="sh-r" href="{esc(row.get("url"))}">{picture}<div class="sh-b">'
-            f'<div>{_tags(row)}</div>'
-            f'<div class="sh-h"><span class="sh-p">{esc(kr(price))}</span>{delta}</div>'
-            f'<div class="sh-n">{esc(row.get("heading"))}</div>'
-            f'<div class="sh-m">{esc(spec)}</div></div></a>'
+            f'<a class="sh-r" href="{esc(row.get("url"))}">{picture}'
+            f'<div class="sh-b"><div class="sh-n">{esc(car_name(row))}</div>'
+            f'<div class="sh-m">{esc(spec)}</div>'
+            + (f'<div class="sh-tags">{tags}</div>' if tags else "")
+            + f'</div><div class="sh-side"><span class="sh-p">{esc(kr(price))}</span>'
+            f'{delta}</div></a>'
         )
     count = len(market) if market else len(rows)
     foot = f"Median of {count} matching · {kr(mid)}" if mid else f"{len(rows)} listings"
     return (
         f'<h2 class="sh-sr">{esc(title)}: {len(rows)} FINN listings with thumbnail, '
-        f'price, year, mileage and distance from the median asking price.</h2>{CSS}'
+        f'price, year, mileage and distance from the median asking price.</h2>'
+        f'{_BASE_CSS}{_LIST_CSS}'
         f'<div class="sh-l">{"".join(items)}</div>'
         f'<div class="sh-f">{esc(foot)}</div>'
     )
@@ -176,8 +259,7 @@ _SPEC = [("year", "Year", ""), ("mileage", "Mileage", "km"), ("fuel", "Fuel", ""
          ("registration_number", "Reg.", ""), ("condition", "Condition", "")]
 
 
-def detail_widget(listing: dict[str, Any], hero: str | None, strip: list[str],
-                  *, hero_width: int = HERO_WIDTH) -> str:
+def detail_widget(listing: dict[str, Any], hero: str | None, strip: list[str]) -> str:
     """One listing, in enough depth to decide whether to open the ad."""
     props = listing.get("properties") or {}
     cells = []
@@ -192,43 +274,42 @@ def detail_widget(listing: dict[str, Any], hero: str | None, strip: list[str],
         cells.append(f'<div class="sh-c"><div class="sh-k">{esc(label)}</div>'
                      f'<div class="sh-v">{esc(value)}</div></div>')
 
-    # A small source stretched full-width just looks broken; show it small.
-    size = "" if hero_width > LIST_WIDTH else " sm"
-    picture = f'<img class="sh-hero{size}" src="{hero}" alt="">' if hero else ""
+    picture = f'<img class="sh-hero" src="{hero}" alt="">' if hero else ""
     thumbs = "".join(f'<img src="{s}" alt="">' for s in strip)
     strip_html = f'<div class="sh-strip">{thumbs}</div>' if thumbs else ""
     blurb = (listing.get("description") or "").strip()
-    if len(blurb) > 260:
-        blurb = blurb[:260].rsplit(" ", 1)[0] + "…"
+    if len(blurb) > 300:
+        blurb = blurb[:300].rsplit(" ", 1)[0] + "…"
+    tags = _tags({**props, "seller_type": listing.get("seller_type")})
+    name = car_name({"heading": listing.get("name"),
+                     "model_specification": props.get("model_specification")})
 
     return (
-        f'<h2 class="sh-sr">{esc(listing.get("name"))}, {esc(kr(listing.get("price")))}, '
-        f'with photo, key specification and an excerpt of the seller\'s description.</h2>{CSS}'
-        f'<a class="sh-r" style="grid-template-columns:1fr;gap:var(--gap-sm)" '
-        f'href="{esc(listing.get("url"))}">'
+        f'<h2 class="sh-sr">{esc(name)}, {esc(kr(listing.get("price")))}, '
+        f'with photos, key specification and an excerpt of the seller\'s description.</h2>'
+        f'{_BASE_CSS}{_DETAIL_CSS}<div class="sh-one">'
+        f'<a class="sh-r" href="{esc(listing.get("url"))}">'
         f'{picture}{strip_html}'
-        f'<div class="sh-b" style="width:100%">'
-        f'<div class="sh-h"><span class="sh-p">{esc(kr(listing.get("price")))}</span>'
-        f'{_tags(props)}</div>'
-        f'<div class="sh-n">{esc(listing.get("name"))}</div>'
-        f'<div class="sh-spec" style="width:100%">{"".join(cells)}</div>'
+        f'<div class="sh-head"><span class="sh-n">{esc(name)}</span>'
+        f'<span class="sh-p">{esc(kr(listing.get("price")))}</span></div>'
+        + (f'<div class="sh-tags">{tags}</div>' if tags else "")
+        + f'<div class="sh-spec">{"".join(cells)}</div>'
         + (f'<div class="sh-q">{esc(blurb)}</div>' if blurb else "")
-        + "</div></a>"
+        + "</a></div>"
     )
 
 
-async def _thumbs(client: FinnClient, rows: list[dict[str, Any]], width: int) -> dict[str, str]:
+async def _thumbs(client: FinnClient, rows: list[dict[str, Any]], budget: int) -> dict[str, str]:
     out: dict[str, str] = {}
     for row in rows:
         url, code = row.get("image_url"), row.get("finnkode")
         if not url or not code:
             continue
         try:
-            payload, mime = await client.fetch_image(url, width=width)
+            payload, _ = await client.fetch_image(url, width=SOURCE_WIDTH)
+            out[code] = uri(fit_jpeg(payload, max_bytes=budget, max_side=THUMB_SIDE, ratio=4 / 3))
         except Exception as exc:
             print(f"! thumbnail {code}: {exc}", file=sys.stderr)
-            continue
-        out[code] = uri(payload, mime)
     return out
 
 
@@ -247,22 +328,22 @@ async def build(args: argparse.Namespace) -> str:
             by_code = {r.get("finnkode"): r for r in rows}
             rows = [by_code[c] for c in args.only.split(",") if c in by_code]
         rows = rows[: args.limit]
-        thumbs = {} if args.no_images else await _thumbs(client, rows, args.width)
+        thumbs = {} if args.no_images else await _thumbs(client, rows, args.thumb_bytes)
         return compact_widget(rows, thumbs, title=args.query or args.vertical, market=market)
 
     listing = await client.get_listing(args.finnkode)
     urls = listing.get("images") or []
     hero, strip = None, []
     if not args.no_images and urls:
-        payload, mime = await client.fetch_image(urls[0], width=args.hero)
-        hero = uri(payload, mime)
+        payload, _ = await client.fetch_image(urls[0], width=SOURCE_WIDTH)
+        hero = uri(fit_jpeg(payload, max_bytes=args.hero_bytes, max_side=HERO_SIDE, ratio=4 / 3))
         for url in urls[1 : 1 + args.strip]:
             try:
-                data, mt = await client.fetch_image(url, width=STRIP_WIDTH)
+                data, _ = await client.fetch_image(url, width=SOURCE_WIDTH)
             except Exception:
                 continue
-            strip.append(uri(data, mt))
-    return detail_widget(listing, hero, strip, hero_width=args.hero)
+            strip.append(uri(fit_jpeg(data, max_bytes=STRIP_BYTES, max_side=STRIP_SIDE, ratio=4 / 3)))
+    return detail_widget(listing, hero, strip)
 
 
 def main() -> None:
@@ -285,16 +366,16 @@ def main() -> None:
     lst.add_argument("--filters", default="", help="JSON object, as for search_finn.")
     lst.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     lst.add_argument("--only", default="", help="Comma-separated finnkoder to keep, in search order.")
-    lst.add_argument("--width", type=int, default=LIST_WIDTH,
-                     help=f"Thumbnail width (default {LIST_WIDTH}; 240 costs ~5x more).")
+    lst.add_argument("--thumb-bytes", type=int, default=THUMB_BYTES,
+                     help=f"Bytes per thumbnail before base64 (default {THUMB_BYTES}).")
     lst.set_defaults(finnkode=None)
 
     one = sub.add_parser("one", parents=[images], help="A single listing, in detail.")
     one.add_argument("finnkode")
-    one.add_argument("--strip", type=int, default=2,
-                     help="Extra small photos (default 2; each adds ~1k tokens, 0 saves most).")
-    one.add_argument("--hero", type=int, default=LIST_WIDTH,
-                     help=f"Hero photo width (default {LIST_WIDTH}). {HERO_WIDTH} gives a\n                           real photo but costs ~5.9k tokens, so raise --budget with it.")
+    one.add_argument("--strip", type=int, default=3,
+                     help="Small photos beside the main one (default 3).")
+    one.add_argument("--hero-bytes", type=int, default=HERO_BYTES,
+                     help=f"Bytes for the main photo before base64 (default {HERO_BYTES}).")
 
     args = parser.parse_args()
     fragment, note = asyncio.run(_within_budget(args))
@@ -312,12 +393,16 @@ async def _within_budget(args: argparse.Namespace) -> tuple[str, str]:
     if args.no_images or len(fragment) // 4 <= args.budget:
         return fragment, ""
 
-    steps = []
-    if args.mode == "list" and getattr(args, "width", LIST_WIDTH) > LIST_WIDTH:
-        steps.append(("width", LIST_WIDTH, f"thumbnails dropped to {LIST_WIDTH}w"))
-    if args.mode == "one":
-        steps.append(("strip", 0, "small photos dropped"))
-        steps.append(("hero", LIST_WIDTH, f"hero dropped to {LIST_WIDTH}w"))
+    # Shed picture quality before shedding pictures: a smaller photo still shows
+    # the car, while no photo at all defeats the point of a widget.
+    if args.mode == "list":
+        steps = [("thumb_bytes", 1_100, "thumbnails compressed harder"),
+                 ("thumb_bytes", 700, "thumbnails compressed hardest")]
+    else:
+        steps = [("strip", 1, "fewer small photos"),
+                 ("strip", 0, "small photos dropped"),
+                 ("hero_bytes", 6_000, "photo compressed harder"),
+                 ("hero_bytes", 3_000, "photo compressed hardest")]
     for attribute, value, said in steps:
         setattr(args, attribute, value)
         fragment = await build(args)

@@ -17,11 +17,15 @@ import sys
 import pytest
 
 from sporhund.widget import (
-    HERO_WIDTH,
-    LIST_WIDTH,
+    DEFAULT_BUDGET,
+    HERO_BYTES,
+    STRIP_BYTES,
+    THUMB_BYTES,
+    car_name,
     compact_widget,
     detail_widget,
     esc,
+    fit_jpeg,
     kr,
     median,
 )
@@ -88,10 +92,42 @@ def test_detail_shows_spec_and_trims_a_long_description():
     assert len(html) < 6000
 
 
-def test_the_list_default_is_the_cheap_width():
-    """80w is ~1.1k tokens a photo; 240w is ~5.9k. The default must be 80."""
-    assert LIST_WIDTH == 80
-    assert HERO_WIDTH == 240
+def test_photo_budgets_stay_small_enough_to_emit_in_one_piece():
+    """Measured, not assumed: a ~24 KB tool result survives whole while a ~31 KB
+    one is truncated to a file, and base64 inflates bytes by 4/3. Both a
+    six-row list and a detail card must clear that with room for the markup."""
+    ceiling = 23_000
+    stylesheet_and_markup = 4_000
+    assert THUMB_BYTES * 6 * 4 // 3 + stylesheet_and_markup < ceiling
+    assert (HERO_BYTES + 3 * STRIP_BYTES) * 4 // 3 + stylesheet_and_markup < ceiling
+    assert DEFAULT_BUDGET * 4 < ceiling
+
+
+@pytest.mark.parametrize("row,expected", [
+    ({"heading": "Tesla Model 3", "model_specification": "Long Range AWD"},
+     "Tesla Model 3 · Long Range AWD"),
+    # A dealer keyword dump: keep only the first, useful segment.
+    ({"heading": "Tesla Model 3",
+      "model_specification": "SR / 415km / Skinn / Autopilot / EU27 / Norsk++++"},
+     "Tesla Model 3 · SR"),
+    # Redundant with the heading, so it adds nothing.
+    ({"heading": "Volkswagen e-Golf", "model_specification": "e-Golf"},
+     "Volkswagen e-Golf"),
+    ({"heading": "Tesla Model 3"}, "Tesla Model 3"),
+])
+def test_car_name_keeps_the_useful_half_of_the_variant(row, expected):
+    assert car_name(row) == expected
+
+
+def test_fit_jpeg_lands_under_its_byte_budget():
+    from PIL import Image
+    import io
+
+    source = io.BytesIO()
+    Image.new("RGB", (1600, 1200), "navy").save(source, "JPEG", quality=95)
+    out = fit_jpeg(source.getvalue(), max_bytes=1800, max_side=220, ratio=4 / 3)
+    assert len(out) <= 1800
+    assert Image.open(io.BytesIO(out)).size[0] <= 220
 
 
 def test_median_of_nothing_is_none():
