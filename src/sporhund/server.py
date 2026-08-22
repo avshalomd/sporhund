@@ -31,6 +31,7 @@ from .finn import (
     summarize,
 )
 from .app_ui import FONT_HOSTS, IMAGE_HOST
+from . import facebook_source
 from .cars import (
     MIN_COMPARABLES,
     brief,
@@ -368,12 +369,14 @@ async def delete_watch(name: str) -> dict[str, Any]:
 async def check_setup(verify_key: bool = False) -> dict[str, Any]:
     """Report what this connector can currently do, and how to switch on the rest.
 
-    Searching, listings, images and watches always work. The two vehicle-registry
-    tools (`lookup_vehicle`, `verify_car`) need a Statens vegvesen API key that is
-    personal to the user. This says whether one is configured, which location it
-    came from, and exactly what to do when it isn't — it never reads, returns or
-    logs the key itself, and the user must always paste it into the file
-    themselves rather than into a chat.
+    Searching, listings, images and watches always work. Two capabilities are
+    opt-in. The vehicle-registry tools (`lookup_vehicle`, `verify_car`) need a
+    Statens vegvesen API key that is personal to the user; this says whether one
+    is configured, which location it came from, and exactly what to do when it
+    isn't — it never reads, returns or logs the key itself, and the user must
+    always paste it into the file themselves rather than into a chat. The
+    Facebook Marketplace tools need an optional extra that carries a browser,
+    installed separately and absent by default.
 
     Args:
         verify_key: Also ask Statens vegvesen whether the key is accepted. Costs
@@ -406,6 +409,7 @@ async def check_setup(verify_key: bool = False) -> dict[str, Any]:
             "searched": key_state["checked"],
             "warnings": key_state["warnings"],
         },
+        "facebook_marketplace": await facebook_source.describe(),
     }
 
     if not registry_ready:
@@ -617,6 +621,68 @@ async def find_comparables(
         "comparables before quoting numbers."
     )
     return out
+
+
+@mcp.tool()
+async def search_facebook(
+    query: str,
+    place: str = "oslo",
+    limit: int = 20,
+) -> dict[str, Any]:
+    """Search public Facebook Marketplace listings, as a second source to FINN.
+
+    Optional and off by default: this needs an extra that carries a browser,
+    because Facebook does not serve Marketplace to plain HTTP clients. If it
+    isn't installed the result says so and how to switch it on. Everything is
+    read as an anonymous visitor — never signed in — which is both what keeps
+    this on solid legal footing and why the results carry no seller identity.
+
+    Worth knowing before you lean on it. Facebook adds real supply at the cheap,
+    local, bulky end that FINN charges to list, so it is genuinely useful for
+    second-hand goods. It is much weaker for cars: the ads carry no registration
+    number, so `verify_car` and the registry checks cannot be applied to them.
+    Results have no structured specification, no verified seller and no
+    guarantee the price means what it says, so keep them labelled as Facebook's
+    when you put them beside FINN's rather than merging the two silently.
+
+    Args:
+        query: What to look for, in the seller's own words ("sofa", "Tripp Trapp").
+        place: Facebook's city slug, e.g. "oslo", "bergen", "stavanger".
+        limit: Maximum listings to return, up to the ~20 on the first page.
+    """
+    try:
+        return await facebook_source.run(
+            "search", "--query", query, "--place", place, "--limit", str(limit)
+        )
+    except facebook_source.FacebookUnavailable as exc:
+        return {"status": "not_installed", "detail": str(exc)}
+
+
+@mcp.tool()
+async def get_facebook_listing(item_id_or_url: str) -> dict[str, Any]:
+    """Read one Facebook Marketplace listing in full, including its description.
+
+    Same opt-in extra and the same anonymous-visitor rule as `search_facebook`.
+    Returns the title, price, location, photos, the seller's own description and
+    whatever attributes Facebook records (typically only a condition). No seller
+    name or contact detail is available to a logged-out reader, by design.
+
+    Args:
+        item_id_or_url: A Marketplace item id, or the full listing URL.
+    """
+    item_id = item_id_or_url.strip().rstrip("/").rsplit("/", 1)[-1]
+    if not item_id.isdigit():
+        return {
+            "status": "bad_input",
+            "detail": (
+                f"Could not find a listing id in {item_id_or_url!r}. Expected a "
+                "number, or a facebook.com/marketplace/item/<id>/ URL."
+            ),
+        }
+    try:
+        return await facebook_source.run("listing", "--id", item_id)
+    except facebook_source.FacebookUnavailable as exc:
+        return {"status": "not_installed", "detail": str(exc)}
 
 
 def _today() -> str:
