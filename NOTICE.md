@@ -95,4 +95,31 @@ personal-use side of that line.
 route first: FINN's partner API (api@finn.no) or written consent from Vend.**
 Get Norwegian legal advice before commercializing anything built here.
 
+## On the optional Facebook Marketplace source
+
+The Facebook source is off by default and installed only on request. Where it is
+switched on, it reads Marketplace **strictly as an anonymous visitor**, and that
+is a load-bearing detail rather than a convenience.
+
+In *Meta Platforms v. Bright Data* (N.D. Cal., January 2024) the court held that
+Meta's terms of service bind people who are **logged in**, and that collecting
+public data while logged out was not a breach of them; Meta dropped the case and
+waived its appeal. The posture is therefore the mirror image of the FINN one
+above: with FINN, the defensible shape is a user-side agent acting inside the
+user's own session, while with Meta it is precisely the opposite — signing in is
+what would create the breach.
+
+So the code does not merely avoid signing in, it **refuses to proceed while
+signed in**. Facebook's login state is carried by the `c_user` and `xs` cookies;
+the session checks for them before it launches and again after every navigation,
+and treats their presence as fatal. It runs in a browser profile Sporhund owns,
+never the user's own, so their Facebook session is structurally out of reach.
+
+Two consequences worth stating plainly. A logged-out reader receives **no seller
+identity at all** — no name, profile, contact route or rating — so the personal
+data that would otherwise make this a GDPR problem is simply not in what gets
+read. And Meta's robots.txt disallows automated collection generally, so the
+same personal-use limits set out above apply here in full: on demand, for
+yourself, no aggregation, no redistribution, no service built on top.
+
 This notice is not legal advice.

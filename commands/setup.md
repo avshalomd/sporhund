@@ -11,3 +11,7 @@ whether Statens vegvesen accepted it.
 
 If it is missing or rejected, follow the `vegvesen-key` skill to walk me through
 ordering and installing my own key. Never ask me to paste the key into this chat.
+
+Also tell me whether the optional Facebook Marketplace source is installed. If it
+isn't, mention it exists and what it costs to switch on, but don't install
+anything — follow the `facebook-source` skill only if I ask for it.

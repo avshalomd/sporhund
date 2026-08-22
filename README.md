@@ -55,6 +55,26 @@ to you, so Sporhund can't ship one.
 Just say **"set up the vehicle registry"** and your agent will walk you through
 ordering and installing it. Everything else works without it.
 
+### Optional: Facebook Marketplace as a second source
+
+Facebook adds real supply at the cheap, local and bulky end that FINN charges to
+list — furniture, appliances, garden things. It is off by default because,
+unlike FINN, Facebook won't serve Marketplace to anything but a real browser, so
+switching it on downloads one (~150 MB).
+
+Say **"set up the Facebook source"** and your agent will walk you through it, or
+run it yourself:
+
+```bash
+uv tool install 'sporhund[facebook]' && playwright install chromium
+```
+
+Everything is read **logged out, always** — Sporhund refuses to read Facebook
+while signed in, and never touches your own browser profile. That is what keeps
+it on solid ground legally, and it means results carry no seller details at all.
+Worth knowing: Facebook ads have no registration number, so the registry checks
+above can't be applied to cars found there.
+
 ## Using it
 
 Talk normally. Some things worth asking for:
@@ -69,8 +89,9 @@ Talk normally. Some things worth asking for:
 - *"Watch this search and tell me what's new"* — saved searches that report only
   listings you haven't seen before.
 
-Covers **torget** (secondhand goods), **cars** and **jobs**. Property is not
-supported yet — see [TODO.md](TODO.md).
+Covers **torget** (secondhand goods), **cars** and **jobs** on FINN, plus
+**Facebook Marketplace** if you switch it on. Property is not supported yet —
+see [TODO.md](TODO.md).
 
 ## Updating
 

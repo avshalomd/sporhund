@@ -3,6 +3,40 @@
 Notable changes per release. Versions follow [semantic versioning](https://semver.org);
 while the major version is 0, minor bumps may change tool outputs.
 
+## 0.5.0 — 2026-08-22
+
+### Added
+
+- **Facebook Marketplace as an optional second source.** `search_facebook` and
+  `get_facebook_listing` read public Marketplace listings alongside FINN's,
+  which matters most for second-hand goods: listing on FINN costs money and
+  Facebook is free, so the cheap, local and bulky end of the market genuinely
+  lives there. Weak for cars — Facebook ads carry no registration number, so the
+  vehicle-registry cross-check cannot be applied to them.
+- **Everything is read logged out, and that is enforced rather than assumed.**
+  Meta's terms bind signed-in users (*Meta v. Bright Data*, N.D. Cal. 2024), so
+  signing in would turn a lawful public read into a terms breach. The session
+  checks for Facebook's `c_user` and `xs` session cookies before every request
+  and refuses to continue if either is present, and it runs in a browser profile
+  Sporhund owns rather than the user's own. A logged-out reader receives no
+  seller identity at all, so no personal data is collected either.
+- **Off by default, installed on request**, like the vehicle-registry key. It
+  needs a browser, which is a heavier dependency than anything else here, so it
+  ships as an extra with its own `sporhund-fb` helper:
+  `uv tool install 'sporhund[facebook]' && playwright install chromium`. Without
+  it the tools return `status: "not_installed"` and say how to switch it on, and
+  a default install stays at two dependencies. `check_setup` reports the state,
+  and the new `facebook-source` skill walks through setup and use.
+
+### Notes
+
+- The helper lives in its own tool environment on purpose: the plugin's server
+  runs from a `uvx` environment that is rebuilt on every plugin update, so
+  anything installed into it after the fact would be silently discarded.
+- Anonymous browsing is rate-limited near 30–60 page loads an hour per IP, so
+  the session paces itself and keeps a persistent guest profile rather than
+  arriving as a new stranger on every run.
+
 ## 0.4.0 — 2026-08-20
 
 ### Added
