@@ -41,3 +41,6 @@ REPORT.md
 
 # Shelved work kept on disk but out of the repo — see TODO.md.
 archive/
+
+# Worktrees created for feature branches — never part of the repo.
+.claude/worktrees/

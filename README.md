@@ -16,18 +16,18 @@ tools, and your agent does the thinking.
 
 ## Setup
 
-In Claude Code:
+One command in Claude Code:
 
 ```bash
-claude plugin marketplace add avshalomd/sporhund
+claude plugin marketplace add avshalomd/sporhund && claude plugin install sporhund@sporhund
 ```
 
-```bash
-claude plugin install sporhund@sporhund
-```
+Restart afterwards and that's it — no clone, no Python setup.
 
-Restart, and that's it — no clone, no Python setup. You'll need
-[`uv`](https://docs.astral.sh/uv/) installed; the plugin fetches the rest.
+**One prerequisite:** [`uv`](https://docs.astral.sh/uv/) must be on your PATH.
+The plugin fetches everything else, but without `uv` it installs cleanly and
+then has no tools, which looks like nothing happening. If you don't have it:
+`curl -LsSf https://astral.sh/uv/install.sh | sh`.
 
 Ask your agent to run `/sporhund:setup` at any point to see what's switched on.
 
