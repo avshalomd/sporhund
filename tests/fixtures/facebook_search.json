@@ -1,0 +1,44 @@
+{
+  "note": "Trimmed from a live logged-out Marketplace search (Oslo, 'sofa') on 2026-08-22. Photo query strings stripped. These field names are the parser's whole contract, so refresh this from a real page rather than editing it by hand. Note the second listing: a free item whose formatted_amount reads '$0' even in Norway, which is why the parser reads `amount` and never trusts the rendered currency symbol. Note also that marketplace_listing_seller is null throughout — logged-out pages carry no seller identity at all.",
+  "listings": [
+    {
+      "__typename": "GroupCommerceProductItem",
+      "id": "1626888188872834",
+      "marketplace_listing_title": "Sofa i god stand",
+      "listing_price": {"formatted_amount": "NOK2,500", "amount_with_offset_in_currency": "26748", "amount": "2500.00"},
+      "location": {"reverse_geocode": {"city": "Oslo", "state": "", "city_page": {"display_name": "Oslo, Norway", "id": "110848678937314"}}},
+      "primary_listing_photo": {"image": {"uri": "https://scontent.fsvg1-1.fna.fbcdn.net/v/t45.5328-4/784619269_1797848854554216_7617051320077898535_n.jpg"}},
+      "creation_time": 1787387326,
+      "is_sold": false, "is_live": true, "is_pending": false,
+      "marketplace_listing_seller": null,
+      "delivery_types": ["IN_PERSON"],
+      "custom_sub_titles_with_rendering_flags": []
+    },
+    {
+      "__typename": "GroupCommerceProductItem",
+      "id": "1512087573555246",
+      "marketplace_listing_title": "Sofa",
+      "listing_price": {"formatted_amount": "$0", "amount_with_offset_in_currency": "0", "amount": "0.00"},
+      "location": {"reverse_geocode": {"city": "Oslo", "state": "", "city_page": {"display_name": "Oslo, Norway", "id": "110848678937314"}}},
+      "primary_listing_photo": {"image": {"uri": "https://scontent.fsvg1-1.fna.fbcdn.net/v/t39.84726-6/724425328_2364255130649466_2662964000478107825_n.jpg"}},
+      "creation_time": 1781455522,
+      "is_sold": false, "is_live": true, "is_pending": false,
+      "marketplace_listing_seller": null,
+      "delivery_types": ["IN_PERSON"],
+      "custom_sub_titles_with_rendering_flags": []
+    },
+    {
+      "__typename": "GroupCommerceProductItem",
+      "id": "1954224388574646",
+      "marketplace_listing_title": "Fin sofa",
+      "listing_price": {"formatted_amount": "NOK3,000", "amount_with_offset_in_currency": "32098", "amount": "3000.00"},
+      "location": {"reverse_geocode": {"city": "Oslo", "state": "", "city_page": {"display_name": "Oslo, Norway", "id": "110848678937314"}}},
+      "primary_listing_photo": {"image": {"uri": "https://scontent.fsvg1-1.fna.fbcdn.net/v/t39.84726-6/775213609_1104999759138252_3948567597668214853_n.jpg"}},
+      "creation_time": 1787249444,
+      "is_sold": false, "is_live": true, "is_pending": false,
+      "marketplace_listing_seller": null,
+      "delivery_types": ["IN_PERSON"],
+      "custom_sub_titles_with_rendering_flags": []
+    }
+  ]
+}
