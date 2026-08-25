@@ -176,13 +176,11 @@ class GuestSession:
         html = await self._load(
             SEARCH_URL.format(place=place), {"query": query}
         )
-        listings = listings_from_html(html)
-        if not listings:
-            raise FacebookError(
-                "No listings found in the page. Facebook may have changed its "
-                "payload shape, or the query returned nothing."
-            )
-        return listings[:limit]
+        # No matches is an answer, not a failure. Narrow queries in smaller
+        # places legitimately come back empty — "kjøleskap" in Stavanger does —
+        # and raising there told the caller the source was broken when it was
+        # working exactly as it should.
+        return listings_from_html(html)[:limit]
 
     async def listing(self, item_id: str) -> dict[str, Any]:
         """One listing in full, including the seller's description."""

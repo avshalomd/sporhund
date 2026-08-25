@@ -3,6 +3,17 @@
 Notable changes per release. Versions follow [semantic versioning](https://semver.org);
 while the major version is 0, minor bumps may change tool outputs.
 
+## 0.5.2 — 2026-08-25
+
+### Fixed
+
+- **A Facebook search with no matches reported itself as a failure.** Anonymous
+  visitors get roughly twenty results per search, so a narrow query in a smaller
+  place legitimately comes back empty — "kjøleskap" in Stavanger does, while
+  "sofa" in the same place does not. Raising there told the caller the source
+  was broken while it was working exactly as intended. An empty search now
+  returns `count: 0` with a note explaining what that does and does not mean.
+
 ## 0.5.1 — 2026-08-25
 
 ### Fixed

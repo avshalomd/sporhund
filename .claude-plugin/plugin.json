@@ -1,7 +1,7 @@
 {
   "name": "sporhund",
   "description": "A FINN.no connector for your agent: search, inspect and track Norwegian marketplace listings, and cross-check car ads against the official vehicle registry.",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "author": {
     "name": "Avshalom Dayan",
     "url": "https://github.com/avshalomd"
