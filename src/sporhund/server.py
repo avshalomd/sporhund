@@ -656,6 +656,11 @@ async def search_facebook(
         )
     except facebook_source.FacebookUnavailable as exc:
         return {"status": "not_installed", "detail": str(exc)}
+    except Exception as exc:  # noqa: BLE001 - report rather than fail the call
+        # Anonymous browsing gets rate-limited and the helper is a separate
+        # process that can die on its own; both should come back as something
+        # the agent can read and act on, not an opaque tool error.
+        return {"status": "failed", "detail": str(exc)}
 
 
 @mcp.tool()
@@ -683,6 +688,8 @@ async def get_facebook_listing(item_id_or_url: str) -> dict[str, Any]:
         return await facebook_source.run("listing", "--id", item_id)
     except facebook_source.FacebookUnavailable as exc:
         return {"status": "not_installed", "detail": str(exc)}
+    except Exception as exc:  # noqa: BLE001 - report rather than fail the call
+        return {"status": "failed", "detail": str(exc)}
 
 
 def _today() -> str:

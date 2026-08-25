@@ -3,6 +3,24 @@
 Notable changes per release. Versions follow [semantic versioning](https://semver.org);
 while the major version is 0, minor bumps may change tool outputs.
 
+## 0.5.1 — 2026-08-25
+
+### Fixed
+
+- **The Facebook tools could not find their helper when run from the plugin.**
+  Entry points cannot be limited to an optional extra, so the plain `sporhund`
+  distribution also installs a `sporhund-fb` — including into the uvx
+  environment the plugin's server runs from. That copy has no browser and never
+  can, and a plain PATH lookup found it first, because uvx puts its own bin at
+  the front. The result was an installed source reporting itself as having no
+  browser, and every call failing. The server now skips its own script directory
+  outright and consults uv's tool directory ahead of the rest of PATH.
+  `check_setup` reports which helper it resolved, and `SPORHUND_FB` overrides it.
+- **A failing helper surfaced as an opaque tool error** rather than something an
+  agent could act on. Rate limits and helper crashes now come back as
+  `status: "failed"` with the reason, matching how a missing install already
+  behaved.
+
 ## 0.5.0 — 2026-08-22
 
 ### Added
