@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import asyncio
 import json
-import shutil
+import os
+import sys
+from pathlib import Path
 from typing import Any
 
 EXECUTABLE = "sporhund-fb"
@@ -33,9 +35,62 @@ class FacebookUnavailable(RuntimeError):
     """Raised when the optional Facebook source is not installed."""
 
 
+def _own_bin() -> Path:
+    """The script directory of the environment this server is running in."""
+    return Path(sys.prefix) / ("Scripts" if os.name == "nt" else "bin")
+
+
+def _candidate_dirs() -> list[Path]:
+    """Where a working `sporhund-fb` could live, best first.
+
+    uv's tool directory comes before PATH because of a trap worth spelling out.
+    `[project.scripts]` entries cannot be attached to an optional extra, so the
+    plain `sporhund` distribution also installs a `sporhund-fb` — including into
+    the uvx environment this server itself runs from. That copy can never work:
+    its environment has no browser and never will. It is also the *first* thing
+    a plain PATH lookup finds, because uvx puts its own bin at the front. So the
+    server's own script directory is skipped outright, and the tool directory is
+    consulted before the rest of PATH.
+    """
+    dirs: list[Path] = []
+    for value in (os.environ.get("UV_TOOL_BIN_DIR"), os.environ.get("XDG_BIN_HOME")):
+        if value:
+            dirs.append(Path(value).expanduser())
+    dirs.append(Path.home() / ".local" / "bin")
+    dirs.extend(
+        Path(entry) for entry in os.environ.get("PATH", "").split(os.pathsep) if entry
+    )
+
+    own = _own_bin().resolve()
+    seen: set[Path] = set()
+    ordered: list[Path] = []
+    for directory in dirs:
+        try:
+            resolved = directory.resolve()
+        except OSError:
+            continue
+        if resolved == own or resolved in seen:
+            continue
+        seen.add(resolved)
+        ordered.append(directory)
+    return ordered
+
+
 def executable_path() -> str | None:
-    """Where `sporhund-fb` lives, or None when the extra was never installed."""
-    return shutil.which(EXECUTABLE)
+    """Where a usable `sporhund-fb` lives, or None if the extra is not installed.
+
+    Deliberately not `shutil.which`: see `_candidate_dirs` for why a plain PATH
+    lookup finds a copy that cannot work.
+    """
+    override = os.environ.get("SPORHUND_FB")
+    if override:
+        candidate = Path(override).expanduser()
+        return str(candidate) if candidate.exists() else None
+    for directory in _candidate_dirs():
+        candidate = directory / EXECUTABLE
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return None
 
 
 def installed() -> bool:
@@ -91,9 +146,11 @@ async def describe() -> dict[str, Any]:
     Never raises: an absent or broken Facebook source is a state to report, not
     an error that should take the rest of the setup report down with it.
     """
+    path = executable_path()
     state: dict[str, Any] = {
         "tools": ["search_facebook", "get_facebook_listing"],
-        "installed": installed(),
+        "installed": path is not None,
+        "helper": path,
         "opt_in": True,
         "reads_as": "anonymous visitor — never signed in",
     }
