@@ -9,6 +9,8 @@ comes back empty and the check passes. These use a stub browser, so no network.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from sporhund.facebook.guard import NotLoggedOutError
@@ -97,6 +99,34 @@ async def test_a_session_acquired_during_the_load_is_still_caught():
     with pytest.raises(NotLoggedOutError):
         await _session(context)._load("https://www.facebook.com/marketplace/oslo/")
     assert any(entry.startswith("goto") for entry in context.log)
+
+
+@pytest.mark.anyio
+async def test_a_search_with_no_matches_is_not_an_error():
+    """Zero results is an answer.
+
+    "kjøleskap" in Stavanger genuinely returns nothing on the first page, and
+    raising there reported a working source as broken.
+    """
+    context = StubContext([GUEST], html="<html>no listings here</html>")
+    assert await _session(context).search("kjoleskap", "stavanger") == []
+
+
+@pytest.mark.anyio
+async def test_a_search_with_matches_still_returns_them():
+    listing = {
+        "id": "1",
+        "marketplace_listing_title": "Sofa",
+        "listing_price": {"formatted_amount": "kr 900", "amount": "900.00"},
+    }
+    html = (
+        '<script type="application/json">'
+        + json.dumps({"feed": [listing]})
+        + "</script>"
+    )
+    context = StubContext([GUEST], html=html)
+    rows = await _session(context).search("sofa", "oslo")
+    assert [r["heading"] for r in rows] == ["Sofa"]
 
 
 @pytest.fixture

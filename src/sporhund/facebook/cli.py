@@ -87,7 +87,23 @@ async def _search(args: argparse.Namespace) -> dict[str, Any]:
 
     async with GuestSession() as session:
         listings = await session.search(args.query, args.place, args.limit)
-    return {"source": "facebook", "count": len(listings), "listings": listings}
+    result: dict[str, Any] = {
+        "source": "facebook",
+        "count": len(listings),
+        "listings": listings,
+    }
+    if not listings:
+        # Say what an empty result does and does not mean, so nobody reads it
+        # as the source being broken — and so a genuine parsing failure is still
+        # something the caller can suspect rather than being papered over.
+        result["note"] = (
+            "No matches on the first page. Facebook only serves about twenty "
+            "results per search to anonymous visitors, so a narrow query in a "
+            "smaller place can legitimately come back empty — try a broader "
+            "term or a larger place. If everything comes back empty, the source "
+            "may be rate-limited or Facebook's page shape may have changed."
+        )
+    return result
 
 
 async def _listing(args: argparse.Namespace) -> dict[str, Any]:
